@@ -1,0 +1,10 @@
+{
+  "superpowers-session-start": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "./hooks/run-hook.cmd session-start"
+      }
+    ]
+  }
+}

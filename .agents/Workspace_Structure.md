@@ -20,13 +20,23 @@ Kanso-Launcher/
     │   └── AGENTS.md                            # Directory & workspace rules
     ├── agents/                                  # 22 Standalone workspace agent definitions (.md)
     └── plugins/
-        └── custom-agent-fleet/                  # Antigravity Plugin Bundle (v2.0.0)
+        ├── custom-agent-fleet/                  # Antigravity Plugin Bundle (v2.0.0)
+        │   ├── plugin.json                      # Validated plugin manifest
+        │   ├── README.md                        # Plugin documentation & role index
+        │   ├── assets/logo.svg                  # Vector constellation logo
+        │   ├── rules/AGENTS.md                  # Always-on plugin behavioral rules
+        │   ├── agents/                          # 22 Plugin-bundled agent definitions
+        │   └── skills/                          # 71 Bundled domain skills (no BOM, strict validated)
+        ├── superpowers/                         # Software engineering workflows plugin (v7.0.2)
+        │   ├── plugin.json                      # Validated plugin manifest
+        │   ├── rules/AGENTS.md                  # TDD & engineering discipline rules
+        │   ├── hooks.json                       # SessionStart lifecycle hook
+        │   └── skills/                          # 15 Engineering skills (TDD, review, debugging, planning)
+        └── swarm/                               # Native Multi-Agent Swarm Plugin (v1.0.0)
             ├── plugin.json                      # Validated plugin manifest
-            ├── README.md                        # Plugin documentation & role index
-            ├── assets/logo.svg                  # Vector constellation logo
-            ├── rules/AGENTS.md                  # Always-on plugin behavioral rules
-            ├── agents/                          # 22 Plugin-bundled agent definitions
-            └── skills/                          # 71 Bundled domain skills (no BOM, strict validated)
+            ├── assets/logo.svg                  # Swarm icon asset
+            ├── sidecars/swarm_board/            # Interactive swarm board web UI sidecar
+            └── skills/                          # 4 Swarm skills (swarm, monitor, narrator, pane)
 ```
 
 ---
@@ -36,11 +46,11 @@ Kanso-Launcher/
 | Plugin Name | Version | Source Scope | Capabilities | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **custom-agent-fleet** | 2.0.0 | Workspace (`.agents/plugins/`) | 22 autonomous roles, 71 domain skills, rules, Stitch CLI & StitchMCP dual-mode | Active (Strict Passed) |
-| **superpowers** | 7.0.2 | Partner Marketplace | TDD, systematic debugging, code review, git worktrees | Active |
+| **superpowers** | 7.0.2 | Workspace (`.agents/plugins/`) | TDD, systematic debugging, code review, git worktrees, session hooks | Active (Strict Passed) |
+| **swarm** | 1.0.0 | Workspace (`.agents/plugins/`) | Swarm board sidecar UI, multi-agent parallel swarm orchestration, 4 skills | Active (Strict Passed) |
 | **mobbin** | 1.5.0 | Partner Marketplace | Mobile and web design pattern search & references | Active |
 | **notion** | 0.1.0 | Partner Marketplace | Knowledge capture, specs, meeting notes, database management | Active |
 | **google-developer-knowledge** | 1.0.3 | Official Marketplace | Google Cloud, Android, Firebase, and Gemini documentation retrieval | Active |
-| **swarm** | Builtin | Builtin System | Native multi-agent parallel board collaboration | Active |
 
 ---
 
