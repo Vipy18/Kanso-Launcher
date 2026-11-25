@@ -38,13 +38,13 @@ data class AccentPreset(
 )
 
 object KansoAccents {
-    const val DEFAULT_ACCENT_ARGB: Long = 0xFFFF4500L
+    const val DEFAULT_ACCENT_ARGB: Long = 0xFFF5B400L
 
     val Presets: List<AccentPreset> = listOf(
+        AccentPreset("Signal Amber", 0xFFF5B400L),
         AccentPreset("Signal Orange", 0xFFFF4500L),
-        AccentPreset("Crimson", 0xFFE62E2DL),
-        AccentPreset("Hazard Amber", 0xFFF2B705L),
-        AccentPreset("Mecha Cyan", 0xFF00B8D9L),
+        AccentPreset("Mecha Crimson", 0xFFFF3B30L),
+        AccentPreset("Cyber Cyan", 0xFF00E5FFL),
         AccentPreset("Acid Lime", 0xFF84CC16L),
         AccentPreset("Cobalt Steel", 0xFF2563EBL)
     )
@@ -53,7 +53,7 @@ object KansoAccents {
         val lum = accent.luminance()
         val contrastBlack = (lum + 0.05f) / (0.004f + 0.05f)
         val contrastWhite = (1.0f + 0.05f) / (lum + 0.05f)
-        return if (contrastBlack >= contrastWhite) Color(0xFF111112) else Color(0xFFFFFFFF)
+        return if (contrastBlack >= contrastWhite) Color(0xFF1A1404) else Color(0xFFFFFFFF)
     }
 }
 
@@ -99,7 +99,9 @@ data class KansoColors(
     val inkSecondary: Color,
     val trackMuted: Color,
     val statusHealthy: Color,
-    val statusWarning: Color
+    val statusWarning: Color,
+    val secondaryTelemetry: Color = Color(0xFF00E5FF),
+    val alertCrimson: Color = Color(0xFFFF3B30)
 )
 
 private fun lightKansoColors(accent: Color): KansoColors = KansoColors(
@@ -122,34 +124,38 @@ private fun lightKansoColors(accent: Color): KansoColors = KansoColors(
     inkSecondary = Color(0xFF6B7078),
     trackMuted = Color(0xFFD0D5DD),
     statusHealthy = Color(0xFF16A34A),
-    statusWarning = Color(0xFFEA580C)
+    statusWarning = Color(0xFFEA580C),
+    secondaryTelemetry = Color(0xFF00B8D9),
+    alertCrimson = Color(0xFFE62E2D)
 )
 
 private fun darkKansoColors(accent: Color): KansoColors = KansoColors(
     isDark = true,
     accent = accent,
     onAccent = KansoAccents.computeOnAccent(accent),
-    canvasBg = Color(0xFF121214),
-    surfaceRaised = Color(0xFF1E1F24),
-    surfaceRaisedHighlight = Color(0xFF282A31),
-    surfaceInset = Color(0xFF141518),
-    shadowLight = Color(0xB332353E),
-    shadowDark = Color(0xF2040405),
-    shadowLightBlur = 9.dp,
-    shadowDarkBlur = 14.dp,
-    shadowLightOffset = 3.5.dp,
-    shadowDarkOffset = 6.dp,
-    darkModuleBg = Color(0xFF18191C),
-    darkModuleElevated = Color(0xFF25272D),
-    inkPrimary = Color(0xFFF2F3F5),
-    inkSecondary = Color(0xFF8E929C),
-    trackMuted = Color(0xFF2E3038),
+    canvasBg = Color(0xFF121315),
+    surfaceRaised = Color(0xFF1F2022),
+    surfaceRaisedHighlight = Color(0xFF292A2C),
+    surfaceInset = Color(0xFF0D0E10),
+    shadowLight = Color(0x9934363D),
+    shadowDark = Color(0xF2030405),
+    shadowLightBlur = 10.dp,
+    shadowDarkBlur = 16.dp,
+    shadowLightOffset = 4.dp,
+    shadowDarkOffset = 6.5.dp,
+    darkModuleBg = Color(0xFF181A1D),
+    darkModuleElevated = Color(0xFF24262B),
+    inkPrimary = Color(0xFFE3E2E4),
+    inkSecondary = Color(0xFF8A909A),
+    trackMuted = Color(0xFF2D2F35),
     statusHealthy = Color(0xFF22C55E),
-    statusWarning = Color(0xFFF97316)
+    statusWarning = Color(0xFFF5B400),
+    secondaryTelemetry = Color(0xFF00E5FF),
+    alertCrimson = Color(0xFFFF3B30)
 )
 
 val LocalKansoColors = staticCompositionLocalOf {
-    lightKansoColors(Color(KansoAccents.DEFAULT_ACCENT_ARGB))
+    darkKansoColors(Color(KansoAccents.DEFAULT_ACCENT_ARGB))
 }
 
 val SpaceGroteskFontFamily = FontFamily(
@@ -159,11 +165,20 @@ val SpaceGroteskFontFamily = FontFamily(
     Font(R.font.space_grotesk, FontWeight.Bold)
 )
 
-val JetBrainsMonoFontFamily = FontFamily(
-    Font(R.font.jetbrains_mono, FontWeight.Normal),
-    Font(R.font.jetbrains_mono, FontWeight.Medium),
-    Font(R.font.jetbrains_mono, FontWeight.Bold)
+val GeistFontFamily = FontFamily(
+    Font(R.font.geist, FontWeight.Normal),
+    Font(R.font.geist, FontWeight.Medium),
+    Font(R.font.geist, FontWeight.SemiBold),
+    Font(R.font.geist, FontWeight.Bold)
 )
+
+val SpaceMonoFontFamily = FontFamily(
+    Font(R.font.space_mono, FontWeight.Normal),
+    Font(R.font.space_mono, FontWeight.Medium),
+    Font(R.font.space_mono, FontWeight.Bold)
+)
+
+val JetBrainsMonoFontFamily = SpaceMonoFontFamily
 
 val KansoTypography = Typography(
     displaySmall = TextStyle(
@@ -194,37 +209,37 @@ val KansoTypography = Typography(
         lineHeight = 18.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
+        fontFamily = GeistFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
-        lineHeight = 19.sp
+        lineHeight = 20.sp
     ),
     bodySmall = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
+        fontFamily = GeistFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp
     ),
     labelLarge = TextStyle(
-        fontFamily = JetBrainsMonoFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontFamily = SpaceMonoFontFamily,
+        fontWeight = FontWeight.Bold,
         fontSize = 13.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.2.sp
+        letterSpacing = 0.6.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = JetBrainsMonoFontFamily,
+        fontFamily = SpaceMonoFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
-        letterSpacing = 0.4.sp
+        fontSize = 10.sp,
+        lineHeight = 12.sp,
+        letterSpacing = 0.8.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = JetBrainsMonoFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 9.5.sp,
-        lineHeight = 12.sp,
-        letterSpacing = 0.6.sp
+        fontFamily = SpaceMonoFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 8.5.sp,
+        lineHeight = 11.sp,
+        letterSpacing = 1.0.sp
     )
 )
 
@@ -237,7 +252,7 @@ val KansoShapes = Shapes(
 
 @Composable
 fun KansoTheme(
-    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    themeMode: ThemeMode = ThemeMode.DARK,
     accentColorArgb: Long = KansoAccents.DEFAULT_ACCENT_ARGB,
     useMaterialYouAccent: Boolean = false,
     content: @Composable () -> Unit

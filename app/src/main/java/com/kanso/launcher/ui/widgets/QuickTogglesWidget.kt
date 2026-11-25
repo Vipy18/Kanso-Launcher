@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bluetooth
@@ -61,6 +62,7 @@ import com.kanso.launcher.ui.theme.JetBrainsMonoFontFamily
 import com.kanso.launcher.ui.theme.LocalKansoColors
 import com.kanso.launcher.ui.theme.WithMechaWidgetTheme
 import com.kanso.launcher.ui.theme.kansoIconNeumorphic
+import com.kanso.launcher.ui.theme.kansoNeumorphic
 import com.kanso.launcher.ui.theme.kansoTactileClickable
 import com.kanso.launcher.ui.theme.mechaMetallicChassis
 
@@ -125,7 +127,96 @@ fun StatusVolumeCapsule(
 
         val icon = iconForAction(action, telemetry, isMediaPlaying)
         val statusText = statusLabelForAction(action, telemetry, isMediaPlaying)
-        val thumbRadius = if (mechaTheme == MechaWidgetTheme.DEFAULT) 14.dp else 7.dp
+        val isClassic = mechaTheme == MechaWidgetTheme.DEFAULT
+
+        if (isClassic) {
+            val classicTargetX = when (stopIndex) {
+                0 -> 0.dp
+                1 -> 44.dp
+                else -> 88.dp
+            }
+            val classicKnobX by animateDpAsState(
+                targetValue = classicTargetX,
+                animationSpec = spring(dampingRatio = 0.66f, stiffness = 440f),
+                label = "classicVolumeKnobSlide"
+            )
+            Box(
+                modifier = modifier
+                    .testTag("widget_volume_capsule")
+                    .height(54.dp)
+                    .width(148.dp)
+                    .kansoNeumorphic(
+                        raised = true,
+                        cornerRadius = 27.dp,
+                        surfaceColor = colors.darkModuleBg
+                    )
+                    .kansoTactileClickable(onLongClick = onLongClick, onClick = onToggle)
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(if (stopIndex == 0) Color.Transparent else Color(0xFF5D626E))
+                    )
+                    Text(
+                        text = statusText,
+                        color = Color(0xFF8A909A),
+                        fontFamily = JetBrainsMonoFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 9.sp,
+                        letterSpacing = 1.0.sp
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(if (stopIndex == 2) Color.Transparent else Color(0xFF5D626E))
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(classicKnobX.roundToPx(), 0) }
+                        .size(44.dp)
+                        .kansoIconNeumorphic(cornerRadius = 22.dp, shadowScale = 0.6f)
+                        .clip(CircleShape)
+                        .background(knobBg)
+                        .border(
+                            width = 0.9.dp,
+                            color = if (stopIndex > 0) colors.onAccent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.10f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(
+                        targetState = Pair(stopIndex, icon),
+                        transitionSpec = {
+                            (fadeIn() + scaleIn(initialScale = 0.72f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.72f))
+                        },
+                        label = "classicVolumeIconMorph"
+                    ) { (_, targetIcon) ->
+                        Icon(
+                            imageVector = targetIcon,
+                            contentDescription = stringResource(R.string.cd_volume_toggle),
+                            tint = knobTint,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                }
+            }
+            return@WithMechaWidgetTheme
+        }
+
+        val thumbRadius = 7.dp
         val thumbShape = RoundedCornerShape(thumbRadius)
 
         Box(
@@ -143,7 +234,6 @@ fun StatusVolumeCapsule(
                 .padding(horizontal = 6.dp),
             contentAlignment = Alignment.CenterStart
         ) {
-            // 3 physical machined detent bars + mode readout
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -181,7 +271,6 @@ fun StatusVolumeCapsule(
                 )
             }
 
-            // Sharp chamfered sliding actuator thumb
             Box(
                 modifier = Modifier
                     .offset { IntOffset(knobOffsetX.roundToPx(), 0) }
@@ -281,24 +370,167 @@ fun QuickToggleClusterWidget(
             label = "btScale"
         )
 
-        val keyRadius = if (mechaTheme == MechaWidgetTheme.DEFAULT) 13.dp else 7.dp
-        val keyShape = RoundedCornerShape(keyRadius)
+        val isClassic = mechaTheme == MechaWidgetTheme.DEFAULT
+        val keyShape = RoundedCornerShape(7.dp)
 
         BoxWithConstraints(
             modifier = modifier.testTag("widget_quick_toggles"),
             contentAlignment = Alignment.Center
         ) {
-            val plateW = if (maxWidth.value.isFinite() && maxWidth > 100.dp) maxWidth.coerceAtMost(176.dp) else 144.dp
-            val topH = (plateW * 0.39f).coerceIn(48.dp, 62.dp)
+            val plateW = if (maxWidth.value.isFinite() && maxWidth > 100.dp) maxWidth.coerceAtMost(176.dp) else 148.dp
+            val topH = (plateW * 0.40f).coerceIn(52.dp, 62.dp)
             val keyW = (plateW - 18.dp) / 2f
             val keyH = (topH - 12.dp).coerceAtLeast(36.dp)
-            val lowerSize = (plateW * 0.38f).coerceIn(46.dp, 60.dp)
+            val lowerSize = (plateW * 0.37f).coerceIn(50.dp, 60.dp)
+
+            if (isClassic) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Upper classic dark stadium dual capsule (Play + elevated circular Wi-Fi disc)
+                    Box(
+                        modifier = Modifier
+                            .width(plateW)
+                            .height(topH)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .kansoNeumorphic(
+                                    raised = true,
+                                    cornerRadius = topH / 2f,
+                                    surfaceColor = colors.darkModuleBg
+                                )
+                                .padding(horizontal = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .testTag("quick_toggle_play_pause")
+                                    .size(topH - 10.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isMediaPlaying) colors.accent else Color.Transparent)
+                                    .kansoTactileClickable(onLongClick = onLongClick, onClick = onTogglePlayPause),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AnimatedContent(
+                                    targetState = isMediaPlaying,
+                                    transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.72f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.72f)) },
+                                    label = "classicPlayPauseIcon"
+                                ) { playing ->
+                                    Icon(
+                                        imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                        contentDescription = stringResource(R.string.cd_media_play_pause),
+                                        tint = playTint,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .testTag("quick_toggle_wifi")
+                                    .size(topH - 8.dp)
+                                    .kansoIconNeumorphic(cornerRadius = (topH - 8.dp) / 2f, shadowScale = 0.65f)
+                                    .clip(CircleShape)
+                                    .background(wifiBg)
+                                    .kansoTactileClickable(onLongClick = onLongClick, onClick = onOpenWifiPanel),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AnimatedContent(
+                                    targetState = isWifiConnected,
+                                    transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.75f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.75f)) },
+                                    label = "classicWifiIcon"
+                                ) { connected ->
+                                    Icon(
+                                        imageVector = if (connected) Icons.Rounded.Wifi else Icons.Rounded.WifiOff,
+                                        contentDescription = stringResource(R.string.cd_wifi_toggle),
+                                        tint = wifiTint,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isWifiConnected) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp, end = 2.dp)
+                                    .size(4.5.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.accent)
+                            )
+                        }
+                    }
+
+                    // Lower twin circular hardware discs (Mobile Data + Bluetooth)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .testTag("quick_toggle_mobile_data")
+                                .size(lowerSize)
+                                .kansoNeumorphic(
+                                    raised = true,
+                                    cornerRadius = lowerSize / 2f,
+                                    surfaceColor = mobileBg
+                                )
+                                .clip(CircleShape)
+                                .kansoTactileClickable(onLongClick = onLongClick, onClick = onOpenMobileDataPanel),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.SwapVert,
+                                contentDescription = stringResource(R.string.cd_mobile_data_toggle),
+                                tint = mobileTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .testTag("quick_toggle_bluetooth")
+                                .size(lowerSize)
+                                .graphicsLayer {
+                                    scaleX = btScale
+                                    scaleY = btScale
+                                }
+                                .kansoNeumorphic(
+                                    raised = true,
+                                    cornerRadius = lowerSize / 2f,
+                                    surfaceColor = btBg
+                                )
+                                .clip(CircleShape)
+                                .kansoTactileClickable(onLongClick = onLongClick, onClick = onOpenBluetooth),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AnimatedContent(
+                                targetState = isBluetoothEnabled,
+                                transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.75f)) togetherWith (fadeOut() + scaleOut(targetScale = 0.75f)) },
+                                label = "classicBtIcon"
+                            ) { enabled ->
+                                Icon(
+                                    imageVector = if (enabled) Icons.Rounded.Bluetooth else Icons.Rounded.BluetoothDisabled,
+                                    contentDescription = stringResource(R.string.cd_bluetooth_toggle),
+                                    tint = btTint,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                return@BoxWithConstraints
+            }
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Upper dual machined relay module
                 Row(
                     modifier = Modifier
                         .height(topH)
@@ -360,7 +592,6 @@ fun QuickToggleClusterWidget(
                     }
                 }
 
-                // Lower dual chamfered armor keys
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,8 +27,11 @@ import com.kanso.launcher.data.model.MechaWidgetTheme
 import com.kanso.launcher.data.telemetry.CalendarDaySlot
 import com.kanso.launcher.ui.theme.JetBrainsMonoFontFamily
 import com.kanso.launcher.ui.theme.LocalKansoColors
+import com.kanso.launcher.ui.theme.SpaceGroteskFontFamily
 import com.kanso.launcher.ui.theme.WithMechaWidgetTheme
 import com.kanso.launcher.ui.theme.kansoIconNeumorphic
+import com.kanso.launcher.ui.theme.kansoMechaAccents
+import com.kanso.launcher.ui.theme.kansoNeumorphic
 import com.kanso.launcher.ui.theme.kansoTactileClickable
 import com.kanso.launcher.ui.theme.mechaMetallicChassis
 
@@ -41,21 +45,33 @@ fun CalendarRibbonWidget(
 ) {
     WithMechaWidgetTheme(mechaTheme) {
         val colors = LocalKansoColors.current
-        val dayRadius = if (mechaTheme == MechaWidgetTheme.DEFAULT) 10.dp else 6.dp
-        val dayShape = RoundedCornerShape(dayRadius)
+        val isClassic = mechaTheme == MechaWidgetTheme.DEFAULT
+        val dayShape = if (isClassic) CircleShape else RoundedCornerShape(6.dp)
 
         Row(
             modifier = modifier
                 .testTag("widget_calendar_ribbon")
                 .fillMaxWidth()
-                .mechaMetallicChassis(
-                    theme = mechaTheme,
-                    darkPlate = false,
-                    accentActive = true,
-                    cutDp = 11.dp
+                .then(
+                    if (isClassic) {
+                        Modifier
+                            .kansoNeumorphic(raised = true, cornerRadius = 24.dp)
+                            .kansoMechaAccents(
+                                accentActive = false,
+                                showCornerBrackets = true,
+                                showLedPip = false
+                            )
+                    } else {
+                        Modifier.mechaMetallicChassis(
+                            theme = mechaTheme,
+                            darkPlate = false,
+                            accentActive = true,
+                            cutDp = 11.dp
+                        )
+                    }
                 )
                 .kansoTactileClickable(onLongClick = onLongClick, onClick = onClick)
-                .padding(horizontal = 8.dp, vertical = 7.dp),
+                .padding(horizontal = 12.dp, vertical = if (isClassic) 10.dp else 7.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -66,25 +82,31 @@ fun CalendarRibbonWidget(
                 ) {
                     Text(
                         text = slot.dayOfWeekShort,
-                        color = if (slot.isToday) colors.accent else colors.inkSecondary,
+                        color = if (slot.isToday) colors.inkPrimary else colors.inkSecondary,
                         fontFamily = JetBrainsMonoFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 8.5.sp,
+                        fontWeight = if (slot.isToday) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 9.sp,
                         letterSpacing = 0.6.sp
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(if (isClassic) 5.dp else 3.dp))
                     Box(
                         modifier = Modifier
-                            .size(width = 30.dp, height = 26.dp)
+                            .size(
+                                width = if (isClassic) 30.dp else 30.dp,
+                                height = if (isClassic) 30.dp else 26.dp
+                            )
                             .then(
                                 if (slot.isToday) {
-                                    Modifier.kansoIconNeumorphic(cornerRadius = dayRadius, shadowScale = 0.55f)
+                                    Modifier.kansoIconNeumorphic(
+                                        cornerRadius = if (isClassic) 15.dp else 6.dp,
+                                        shadowScale = 0.55f
+                                    )
                                 } else Modifier
                             )
                             .clip(dayShape)
                             .background(if (slot.isToday) colors.accent else Color.Transparent)
                             .then(
-                                if (!slot.isToday) {
+                                if (!slot.isToday && !isClassic) {
                                     Modifier.border(
                                         width = 0.6.dp,
                                         color = colors.inkSecondary.copy(alpha = 0.16f),
@@ -97,9 +119,9 @@ fun CalendarRibbonWidget(
                         Text(
                             text = slot.dayOfMonth.toString().padStart(2, '0'),
                             color = if (slot.isToday) colors.onAccent else colors.inkPrimary,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
+                            fontFamily = if (isClassic) SpaceGroteskFontFamily else JetBrainsMonoFontFamily,
+                            fontWeight = if (slot.isToday) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = if (isClassic) 13.5.sp else 12.sp
                         )
                     }
                 }

@@ -115,7 +115,6 @@ import com.kanso.launcher.ui.theme.JetBrainsMonoFontFamily
 import com.kanso.launcher.ui.theme.LocalKansoColors
 import com.kanso.launcher.ui.theme.SpaceGroteskFontFamily
 import com.kanso.launcher.ui.theme.kansoIconNeumorphic
-import com.kanso.launcher.ui.theme.kansoMechaAccents
 import com.kanso.launcher.ui.theme.kansoNeumorphic
 import com.kanso.launcher.ui.theme.kansoTactileClickable
 import com.kanso.launcher.ui.widgets.BatteryCapsuleWidget
@@ -1085,7 +1084,7 @@ private fun HomeShowcasePage(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1222,23 +1221,23 @@ private fun HomeShowcasePage(
                         .testTag("home_optional_search_bar")
                         .fillMaxWidth()
                         .padding(horizontal = 18.dp)
-                        .height(42.dp)
-                        .kansoNeumorphic(raised = false, cornerRadius = 15.dp)
+                        .height(44.dp)
+                        .kansoNeumorphic(raised = false, cornerRadius = 22.dp)
                         .kansoTactileClickable(onLongClick = onEnterEditMode, onClick = onSearchBarClick)
-                        .padding(horizontal = 14.dp),
+                        .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = null,
-                        tint = colors.accent,
-                        modifier = Modifier.size(17.dp)
+                        tint = colors.inkSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = stringResource(R.string.search_apps_hint),
                         color = colors.inkSecondary,
-                        fontSize = 12.5.sp
+                        fontSize = 13.5.sp
                     )
                 }
             }
@@ -1283,18 +1282,18 @@ private fun HomeShowcasePage(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .kansoIconNeumorphic(cornerRadius = 11.dp, shadowScale = 0.6f)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(colors.darkModuleBg.copy(alpha = 0.90f))
-                        .border(1.dp, colors.onAccent.copy(alpha = 0.35f), RoundedCornerShape(11.dp)),
+                        .size(34.dp)
+                        .kansoIconNeumorphic(cornerRadius = 17.dp, shadowScale = 0.5f)
+                        .clip(CircleShape)
+                        .background(colors.darkModuleBg.copy(alpha = 0.86f))
+                        .border(0.8.dp, colors.onAccent.copy(alpha = 0.25f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.PowerSettingsNew,
                         contentDescription = stringResource(R.string.cd_power_lock),
                         tint = colors.accent,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
@@ -1612,13 +1611,12 @@ private fun FloatingMechaDock(
         modifier = Modifier
             .testTag("floating_mecha_dock")
             .fillMaxWidth()
-            .height(72.dp)
+            .height(74.dp)
             .kansoNeumorphic(
                 raised = true,
-                cornerRadius = 36.dp,
+                cornerRadius = 37.dp,
                 surfaceColor = colors.darkModuleBg
             )
-            .kansoMechaAccents(accentActive = isEditMode, showCornerBrackets = false, showLedPip = true)
             .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -1630,12 +1628,14 @@ private fun FloatingMechaDock(
             Box(
                 modifier = Modifier
                     .testTag("dock_slot_${slot.slotIndex}")
-                    .size(52.dp)
+                    .size(54.dp)
+                    .kansoIconNeumorphic(cornerRadius = 27.dp, shadowScale = 0.45f)
                     .clip(CircleShape)
                     .background(colors.darkModuleElevated)
-                    .then(
-                        if (isEditMode) Modifier.border(1.5.dp, colors.accent, CircleShape)
-                        else Modifier
+                    .border(
+                        width = if (isEditMode) 1.5.dp else 0.75.dp,
+                        color = if (isEditMode) colors.accent else Color.White.copy(alpha = 0.06f),
+                        shape = CircleShape
                     )
                     .kansoTactileClickable(
                         onLongClick = { onSlotLongClick(slot) },

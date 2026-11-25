@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -48,16 +50,20 @@ import androidx.compose.ui.unit.sp
 import com.kanso.launcher.R
 import com.kanso.launcher.data.model.MechaWidgetTheme
 import com.kanso.launcher.service.MediaHudState
+import com.kanso.launcher.ui.theme.GeistFontFamily
 import com.kanso.launcher.ui.theme.JetBrainsMonoFontFamily
 import com.kanso.launcher.ui.theme.LocalKansoColors
 import com.kanso.launcher.ui.theme.SpaceGroteskFontFamily
 import com.kanso.launcher.ui.theme.WithMechaWidgetTheme
 import com.kanso.launcher.ui.theme.kansoIconNeumorphic
+import com.kanso.launcher.ui.theme.kansoMechaAccents
+import com.kanso.launcher.ui.theme.kansoNeumorphic
 import com.kanso.launcher.ui.theme.kansoTactileClickable
 import com.kanso.launcher.ui.theme.mechaMetallicChassis
 
 /**
- * Sharp machined metallic Media Deck HUD strictly using active accent + launcher defaults.
+ * Classic tactile Media HUD card with corner registration brackets, rounded-square album art,
+ * and circular playback buttons (DEFAULT), or optional machined Mecha Media Deck.
  */
 @Composable
 fun MediaHudWidget(
@@ -75,32 +81,50 @@ fun MediaHudWidget(
     WithMechaWidgetTheme(mechaTheme) {
         val colors = LocalKansoColors.current
         val artBitmap = remember(media.albumArt) { media.albumArt?.asImageBitmap() }
-        val artRadius = if (mechaTheme == MechaWidgetTheme.DEFAULT) 14.dp else 7.dp
-        val btnRadius = if (mechaTheme == MechaWidgetTheme.DEFAULT) 9.dp else 5.dp
+        val isClassic = mechaTheme == MechaWidgetTheme.DEFAULT
+        val artRadius = if (isClassic) 16.dp else 7.dp
         val artShape = RoundedCornerShape(artRadius)
-        val btnShape = RoundedCornerShape(btnRadius)
+        val btnShape = if (isClassic) CircleShape else RoundedCornerShape(5.dp)
 
         Row(
             modifier = modifier
                 .testTag("widget_media_hud")
-                .height(88.dp)
-                .mechaMetallicChassis(
-                    theme = mechaTheme,
-                    darkPlate = false,
-                    accentActive = media.isPlaying,
-                    cutDp = 12.dp
+                .height(if (isClassic) 96.dp else 88.dp)
+                .then(
+                    if (isClassic) {
+                        Modifier
+                            .kansoNeumorphic(raised = true, cornerRadius = 22.dp)
+                            .kansoMechaAccents(
+                                accentActive = media.isPlaying,
+                                showCornerBrackets = true,
+                                showLedPip = false
+                            )
+                    } else {
+                        Modifier.mechaMetallicChassis(
+                            theme = mechaTheme,
+                            darkPlate = false,
+                            accentActive = media.isPlaying,
+                            cutDp = 12.dp
+                        )
+                    }
                 )
-                .padding(7.dp),
+                .padding(if (isClassic) 10.dp else 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .testTag("media_hud_art_play_pause")
-                    .size(72.dp)
+                    .size(if (isClassic) 74.dp else 72.dp)
                     .kansoIconNeumorphic(cornerRadius = artRadius, shadowScale = 0.55f)
                     .clip(artShape)
-                    .background(Brush.linearGradient(listOf(colors.accent, colors.darkModuleBg)))
-                    .border(1.dp, colors.accent.copy(alpha = 0.55f), artShape)
+                    .background(
+                        if (isClassic) Brush.linearGradient(listOf(colors.accent, colors.accent.copy(alpha = 0.85f)))
+                        else Brush.linearGradient(listOf(colors.accent, colors.darkModuleBg))
+                    )
+                    .then(
+                        if (!isClassic) Modifier.border(1.dp, colors.accent.copy(alpha = 0.55f), artShape)
+                        else Modifier
+                    )
                     .kansoTactileClickable(
                         onLongClick = onLongClick,
                         onClick = {
@@ -122,6 +146,33 @@ fun MediaHudWidget(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
+                } else if (isClassic) {
+                    // Classic warm editorial silhouette bust on Signal Amber album frame
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+                        val bustColor = Color(0xFF17181B)
+                        drawCircle(
+                            color = bustColor,
+                            radius = w * 0.21f,
+                            center = Offset(w * 0.50f, h * 0.36f)
+                        )
+                        val shoulders = Path().apply {
+                            moveTo(w * 0.14f, h)
+                            cubicTo(
+                                w * 0.16f, h * 0.62f,
+                                w * 0.30f, h * 0.57f,
+                                w * 0.50f, h * 0.57f
+                            )
+                            cubicTo(
+                                w * 0.70f, h * 0.57f,
+                                w * 0.84f, h * 0.62f,
+                                w * 0.86f, h
+                            )
+                            close()
+                        }
+                        drawPath(path = shoulders, color = bustColor)
+                    }
                 } else {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawRect(
@@ -129,7 +180,6 @@ fun MediaHudWidget(
                                 colors = listOf(colors.accent, colors.darkModuleBg)
                             )
                         )
-                        // Sharp mecha equalizer bars placeholder
                         val barW = size.width * 0.11f
                         val heights = listOf(0.35f, 0.65f, 0.48f, 0.78f, 0.42f)
                         val gap = size.width * 0.055f
@@ -149,9 +199,9 @@ fun MediaHudWidget(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(3.dp)
+                            .padding(4.dp)
                             .size(19.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(if (isClassic) CircleShape else RoundedCornerShape(6.dp))
                             .background(colors.darkModuleBg.copy(alpha = 0.90f)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -165,7 +215,7 @@ fun MediaHudWidget(
                 }
             }
 
-            Spacer(modifier = Modifier.width(9.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(
                 modifier = Modifier
@@ -185,6 +235,7 @@ fun MediaHudWidget(
                 val sourceTag = when {
                     media.sourceAppLabel.isNotBlank() -> media.sourceAppLabel.uppercase()
                     !notificationAccessGranted -> "SYNC MEDIA"
+                    isClassic -> "MEDIA HUD"
                     else -> "DECK // HUD"
                 }
                 Text(
@@ -201,52 +252,59 @@ fun MediaHudWidget(
                     text = media.title.ifBlank { stringResource(R.string.media_hud_fallback_title) },
                     color = colors.inkPrimary,
                     fontFamily = SpaceGroteskFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    lineHeight = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    lineHeight = 15.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = media.artist.ifBlank { stringResource(R.string.media_hud_fallback_subtitle) },
                     color = colors.inkSecondary,
-                    fontFamily = SpaceGroteskFontFamily,
+                    fontFamily = GeistFontFamily,
                     fontWeight = FontWeight.Normal,
-                    fontSize = 10.sp,
-                    lineHeight = 11.5.sp,
+                    fontSize = 10.5.sp,
+                    lineHeight = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(5.dp))
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val transportSize = if (isClassic) 26.dp else 28.dp
                     Box(
                         modifier = Modifier
                             .testTag("media_hud_previous")
-                            .size(width = 30.dp, height = 26.dp)
+                            .size(width = if (isClassic) transportSize else 30.dp, height = transportSize)
                             .clip(btnShape)
-                            .background(colors.darkModuleBg)
+                            .background(if (isClassic) colors.surfaceInset else colors.darkModuleBg)
                             .kansoTactileClickable(onLongClick = onLongClick, onClick = onPrevious),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.SkipPrevious,
                             contentDescription = stringResource(R.string.cd_media_previous),
-                            tint = Color(0xFFF2F3F5),
-                            modifier = Modifier.size(15.dp)
+                            tint = colors.inkPrimary,
+                            modifier = Modifier.size(14.dp)
                         )
                     }
 
                     Box(
                         modifier = Modifier
                             .testTag("media_hud_play_pause_btn")
-                            .size(width = 34.dp, height = 26.dp)
+                            .size(width = if (isClassic) transportSize else 34.dp, height = transportSize)
                             .clip(btnShape)
-                            .background(if (media.isPlaying) colors.accent else colors.darkModuleElevated)
+                            .background(
+                                when {
+                                    media.isPlaying -> colors.accent
+                                    isClassic -> colors.surfaceInset
+                                    else -> colors.darkModuleElevated
+                                }
+                            )
                             .kansoTactileClickable(onLongClick = onLongClick, onClick = onPlayPause),
                         contentAlignment = Alignment.Center
                     ) {
@@ -258,8 +316,8 @@ fun MediaHudWidget(
                             Icon(
                                 imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                 contentDescription = stringResource(R.string.cd_media_play_pause),
-                                tint = if (playing) colors.onAccent else Color(0xFFF2F3F5),
-                                modifier = Modifier.size(15.dp)
+                                tint = if (playing) colors.onAccent else colors.inkPrimary,
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                     }
@@ -267,17 +325,17 @@ fun MediaHudWidget(
                     Box(
                         modifier = Modifier
                             .testTag("media_hud_next")
-                            .size(width = 30.dp, height = 26.dp)
+                            .size(width = if (isClassic) transportSize else 30.dp, height = transportSize)
                             .clip(btnShape)
-                            .background(colors.darkModuleBg)
+                            .background(if (isClassic) colors.surfaceInset else colors.darkModuleBg)
                             .kansoTactileClickable(onLongClick = onLongClick, onClick = onNext),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.SkipNext,
                             contentDescription = stringResource(R.string.cd_media_next),
-                            tint = Color(0xFFF2F3F5),
-                            modifier = Modifier.size(15.dp)
+                            tint = colors.inkPrimary,
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }

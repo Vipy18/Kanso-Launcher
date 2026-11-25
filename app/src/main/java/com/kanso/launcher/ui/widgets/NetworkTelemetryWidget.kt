@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -26,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,8 +41,10 @@ import com.kanso.launcher.data.model.TelemetryMetric
 import com.kanso.launcher.data.telemetry.MetricReadout
 import com.kanso.launcher.ui.theme.JetBrainsMonoFontFamily
 import com.kanso.launcher.ui.theme.LocalKansoColors
+import com.kanso.launcher.ui.theme.SpaceGroteskFontFamily
 import com.kanso.launcher.ui.theme.WithMechaWidgetTheme
 import com.kanso.launcher.ui.theme.drawMachinedArcTicks
+import com.kanso.launcher.ui.theme.kansoNeumorphic
 import com.kanso.launcher.ui.theme.kansoTactileClickable
 import com.kanso.launcher.ui.theme.mechaMetallicChassis
 
@@ -47,7 +52,7 @@ import com.kanso.launcher.ui.theme.mechaMetallicChassis
 fun AudioDotVisualizer(
     bands: List<Float>,
     isActive: Boolean,
-    height: Dp = 74.dp,
+    height: Dp = 84.dp,
     modifier: Modifier = Modifier
 ) {
     val colors = LocalKansoColors.current
@@ -56,33 +61,37 @@ fun AudioDotVisualizer(
             .testTag("audio_dot_visualizer")
             .size(width = 16.dp, height = height)
     ) {
-        val rows = bands.size.coerceAtLeast(12)
+        val rows = bands.size.coerceAtLeast(13)
         val spacingY = size.height / rows
         val maxCols = 3
-        val barW = 3.2.dp.toPx()
-        val barH = (spacingY * 0.56f).coerceAtLeast(2.dp.toPx())
-        val colStep = 4.8.dp.toPx()
+        val dotR = 1.35.dp.toPx()
+        val colStep = 4.4.dp.toPx()
 
         for (i in 0 until rows) {
             val level = bands.getOrElse(i) { 0.14f }.coerceIn(0.08f, 1f)
-            val y = i * spacingY + (spacingY - barH) / 2f
+            val cy = i * spacingY + spacingY / 2f
             val activeCols = if (isActive) {
                 (level * maxCols).toInt().coerceIn(1, maxCols)
             } else {
-                if (i % 3 == 0) 2 else 1
+                when {
+                    i < 3 -> 2
+                    i < 8 -> 1
+                    else -> 1
+                }
             }
 
             for (c in 0 until maxCols) {
                 val lit = c < activeCols
-                val barColor = when {
-                    isActive && lit && (c == activeCols - 1 || level > 0.62f) -> colors.accent
-                    lit -> colors.inkPrimary.copy(alpha = 0.82f)
-                    else -> colors.inkSecondary.copy(alpha = 0.16f)
+                val fade = (1f - (i.toFloat() / rows) * 0.55f).coerceIn(0.28f, 1f)
+                val dotColor = when {
+                    isActive && lit && (c == activeCols - 1 || level > 0.60f) -> colors.accent
+                    lit -> colors.inkPrimary.copy(alpha = 0.88f * fade)
+                    else -> colors.inkSecondary.copy(alpha = 0.24f * fade)
                 }
-                drawRect(
-                    color = barColor,
-                    topLeft = Offset(1.dp.toPx() + c * colStep, y),
-                    size = Size(barW, barH)
+                drawCircle(
+                    color = dotColor,
+                    radius = if (lit) dotR else dotR * 0.72f,
+                    center = Offset(2.dp.toPx() + c * colStep, cy)
                 )
             }
         }
@@ -90,7 +99,8 @@ fun AudioDotVisualizer(
 }
 
 /**
- * Sharp machined metallic Telemetry Unit with calibrated radial ticks and accent-only indicators.
+ * Classic -45° tilted diagonal stadium Telemetry pill with upright readout and circular
+ * radial progress ring (DEFAULT), or optional machined Mecha telemetry unit.
  */
 @Composable
 fun NetworkTelemetryWidget(
@@ -118,8 +128,8 @@ fun NetworkTelemetryWidget(
         BoxWithConstraints(
             modifier = modifier.testTag("widget_telemetry_${metric.name.lowercase()}")
         ) {
-            val availW = if (maxWidth.value.isFinite() && maxWidth > 40.dp) maxWidth else 182.dp
-            val availH = if (maxHeight.value.isFinite() && maxHeight > 40.dp) maxHeight else 148.dp
+            val availW = if (maxWidth.value.isFinite() && maxWidth > 40.dp) maxWidth else 184.dp
+            val availH = if (maxHeight.value.isFinite() && maxHeight > 40.dp) maxHeight else 160.dp
             val compact = availW < 146.dp || availH < 120.dp
 
             if (compact) {
@@ -166,6 +176,149 @@ fun NetworkTelemetryWidget(
                         )
                     }
                 }
+            } else if (mechaTheme == MechaWidgetTheme.DEFAULT) {
+                val visSpace = if (showAudioVisualizer) 20.dp else 0.dp
+                val diagBoxSize = minOf(
+                    (availW - visSpace).coerceIn(138.dp, 162.dp),
+                    availH.coerceIn(138.dp, 162.dp)
+                )
+                val scale = (diagBoxSize / 156.dp).coerceIn(0.84f, 1.12f)
+
+                // Exact -45° rotated stadium math so pill stays strictly inside diagBoxSize
+                // Rotated bbox = (pillW - pillH) * 0.70710677f + pillH == innerSpan <= diagBoxSize - 10.dp
+                val pillH = diagBoxSize * 0.57f
+                val innerSpan = (diagBoxSize - 10.dp).coerceAtLeast(pillH + 16.dp)
+                val pillW = pillH + (innerSpan - pillH) / 0.70710677f
+                // Exact offset from Box center to each semicircle cap center along -45°
+                val capOffset = (pillW - pillH) * 0.5f * 0.70710677f
+                val ringSize = (pillH - 16.dp * scale).coerceAtLeast(54.dp)
+
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (showAudioVisualizer) {
+                        AudioDotVisualizer(
+                            bands = if (audioBands.isEmpty()) List(13) { 0.14f } else audioBands,
+                            isActive = isAudioActive,
+                            height = (diagBoxSize * 0.60f).coerceIn(72.dp, 102.dp),
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(diagBoxSize)
+                            .kansoTactileClickable(onLongClick = onLongClick, onClick = onClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Tilted -45° extruded stadium capsule hull (requiredSize prevents parent clamping before rotation)
+                        Box(
+                            modifier = Modifier
+                                .requiredSize(width = pillW, height = pillH)
+                                .graphicsLayer { rotationZ = -45f }
+                                .kansoNeumorphic(
+                                    raised = true,
+                                    cornerRadius = pillH / 2f
+                                )
+                        )
+
+                        // Upper-right lobe: mathematically centered inside upper-right semicircle cap
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset(x = capOffset, y = -capOffset)
+                                .width((pillH - 12.dp * scale).coerceAtLeast(62.dp)),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = readout.primaryValue,
+                                color = colors.inkPrimary,
+                                fontFamily = SpaceGroteskFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = (16f * scale).sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = readout.unitLabel,
+                                color = colors.inkSecondary,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Normal,
+                                fontSize = (9.5f * scale).sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Lower-left lobe: concentric circular dial ring inside lower-left semicircle cap
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset(x = -capOffset, y = capOffset)
+                                .size(ringSize),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokePx = 4.6.dp.toPx() * scale
+                                val inset = strokePx / 2f + 1.dp.toPx()
+                                val arcSize = Size(size.width - inset * 2f, size.height - inset * 2f)
+                                val cx = size.width / 2f
+                                val cy = size.height / 2f
+
+                                // Subtle inner dial disc matching classic dark charcoal gauge face
+                                drawCircle(
+                                    color = if (colors.isDark) colors.darkModuleBg else colors.surfaceInset,
+                                    radius = size.minDimension / 2f - strokePx,
+                                    center = Offset(cx, cy)
+                                )
+
+                                // Base circular gauge track
+                                drawArc(
+                                    color = colors.trackMuted.copy(alpha = 0.72f),
+                                    startAngle = -90f,
+                                    sweepAngle = 360f,
+                                    useCenter = false,
+                                    topLeft = Offset(inset, inset),
+                                    size = arcSize,
+                                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                                )
+
+                                // Active sweep arc
+                                drawArc(
+                                    color = colors.accent,
+                                    startAngle = -90f,
+                                    sweepAngle = (animatedGauge * 330f).coerceIn(22f, 350f),
+                                    useCenter = false,
+                                    topLeft = Offset(inset, inset),
+                                    size = arcSize,
+                                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                                )
+
+                                // 4 subtle compass calibration micro-ticks inside dial
+                                val tickOuter = size.minDimension / 2f - strokePx - 3.dp.toPx()
+                                val tickInner = tickOuter - 3.dp.toPx()
+                                val tickColor = colors.inkSecondary.copy(alpha = 0.38f)
+                                val tickW = 1.dp.toPx()
+                                drawLine(tickColor, Offset(cx, cy - tickOuter), Offset(cx, cy - tickInner), tickW)
+                                drawLine(tickColor, Offset(cx, cy + tickOuter), Offset(cx, cy + tickInner), tickW)
+                                drawLine(tickColor, Offset(cx - tickOuter, cy), Offset(cx - tickInner, cy), tickW)
+                                drawLine(tickColor, Offset(cx + tickOuter, cy), Offset(cx + tickInner, cy), tickW)
+                            }
+                            Text(
+                                text = metric.shortCode,
+                                color = colors.inkSecondary,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = (9.5f * scale).sp,
+                                letterSpacing = 0.6.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
             } else {
                 val cardW = (availW - if (showAudioVisualizer) 20.dp else 0.dp).coerceIn(136.dp, 240.dp)
                 val cardH = availH.coerceIn(124.dp, 220.dp)
@@ -196,7 +349,6 @@ fun NetworkTelemetryWidget(
                             .padding((11f * scale).dp),
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Top telemetry header strip
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -221,7 +373,6 @@ fun NetworkTelemetryWidget(
                             )
                         }
 
-                        // Center dial gauge + digital readout
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -289,7 +440,6 @@ fun NetworkTelemetryWidget(
                             }
                         }
 
-                        // Bottom machined linear progress bar
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

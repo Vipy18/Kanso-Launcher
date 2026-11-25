@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
@@ -177,14 +178,16 @@ fun Modifier.kansoNeumorphic(
                 }
                 nativeCanvas.drawRoundRect(rect, radiusPx, radiusPx, fillPaint)
 
-                // Crisp 3D top-left light to bottom-right shadow bevel rim
+                // Crisp 3D top-left light to bottom-right shadow bevel rim (subtle 6% ghost border on dark)
                 val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     style = Paint.Style.STROKE
                     strokeWidth = 1.dp.toPx()
                     shader = LinearGradient(
                         0f, 0f, size.width, size.height,
-                        colors.shadowLight.copy(alpha = if (colors.isDark) 0.36f else 0.90f).toArgb(),
-                        colors.shadowDark.copy(alpha = if (colors.isDark) 0.50f else 0.32f).toArgb(),
+                        if (colors.isDark) Color.White.copy(alpha = 0.08f).toArgb()
+                        else colors.shadowLight.copy(alpha = 0.90f).toArgb(),
+                        if (colors.isDark) Color.Black.copy(alpha = 0.48f).toArgb()
+                        else colors.shadowDark.copy(alpha = 0.32f).toArgb(),
                         Shader.TileMode.CLAMP
                     )
                 }
@@ -336,17 +339,18 @@ fun Modifier.kansoMechaAccents(
     showLedPip: Boolean = false
 ): Modifier = composed {
     val colors = LocalKansoColors.current
-    this.drawBehind {
-        val stroke = 1.dp.toPx()
-        val inset = 5.dp.toPx()
-        val arm = 6.dp.toPx()
+    this.drawWithContent {
+        drawContent()
+        val stroke = 1.25.dp.toPx()
+        val inset = 7.dp.toPx()
+        val arm = 6.5.dp.toPx()
         val bracketColor = if (accentActive) {
-            colors.accent.copy(alpha = 0.78f)
+            colors.accent.copy(alpha = 0.55f)
         } else {
-            colors.inkSecondary.copy(alpha = if (colors.isDark) 0.34f else 0.28f)
+            colors.inkSecondary.copy(alpha = if (colors.isDark) 0.32f else 0.26f)
         }
 
-        if (showCornerBrackets && size.width > 36.dp.toPx() && size.height > 36.dp.toPx()) {
+        if (showCornerBrackets && size.width > 40.dp.toPx() && size.height > 40.dp.toPx()) {
             // Top-left sharp L-bracket
             drawLine(
                 color = bracketColor,

@@ -71,7 +71,7 @@ data class CachedWeather(
 )
 
 data class KansoSettingsState(
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeMode: ThemeMode = ThemeMode.DARK,
     val accentColorArgb: Long = KansoAccents.DEFAULT_ACCENT_ARGB,
     val useMaterialYouAccent: Boolean = false,
     val useWallpaperOverlay: Boolean = false,
@@ -161,7 +161,7 @@ class KansoPreferences(private val context: Context) {
 
         KansoSettingsState(
             themeMode = prefs[Keys.THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
-                ?: ThemeMode.SYSTEM,
+                ?: ThemeMode.DARK,
             accentColorArgb = prefs[Keys.ACCENT_COLOR] ?: KansoAccents.DEFAULT_ACCENT_ARGB,
             useMaterialYouAccent = prefs[Keys.USE_MATERIAL_YOU] ?: false,
             useWallpaperOverlay = prefs[Keys.USE_WALLPAPER] ?: false,
