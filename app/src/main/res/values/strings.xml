@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kanso-Launcher</string>
+    <string name="notification_listener_label">Kanso Media &amp; Notifications</string>
+    <string name="aod_service_label">Kanso Always-On Display</string>
+    <string name="accessibility_service_label">Kanso Home &amp; Recents Bridge</string>
+    <string name="accessibility_service_description">Optional OEM compatibility service that routes Home and Recents triggers on restricted ROMs and enables instant Lock Screen or Screenshot actions from the Kanso Control Panel.</string>
+    <string name="lifecycle_service_channel_name">Kanso 60FPS Governor &amp; Companion</string>
+    <string name="lifecycle_service_notif_title">Kanso 60FPS Governor Active</string>
+    <string name="lifecycle_service_notif_text">Adaptive frame pacing active to preserve 60FPS and battery efficiency.</string>
+
+    <string name="search_apps_hint">Search Apps…</string>
+    <string name="media_hud_fallback_title">Media HUD</string>
+    <string name="media_hud_fallback_subtitle">Tap to play</string>
+    <string name="battery_unit_tag">PWR // CELL</string>
+    <string name="humidity_label">HUMIDITY %1$d%%</string>
+    <string name="apps_installed_label">%1$d Apps Installed</string>
+    <string name="ram_free_label">RAM: %1$s Free</string>
+    <string name="swipe_up_to_unlock">Swipe up to unlock</string>
+    <string name="discover_search_hint">Search apps or web…</string>
+
+    <string name="cd_volume_toggle">Toggle volume and sound mode</string>
+    <string name="cd_media_play_pause">Play or pause media</string>
+    <string name="cd_media_previous">Previous track</string>
+    <string name="cd_media_next">Next track</string>
+    <string name="cd_wifi_toggle">Open internet and Wi-Fi panel</string>
+    <string name="cd_mobile_data_toggle">Open mobile data settings</string>
+    <string name="cd_bluetooth_toggle">Open Bluetooth settings</string>
+    <string name="cd_drawer_layout_toggle">Switch between grid and list view</string>
+    <string name="cd_open_settings">Open Kanso Settings</string>
+    <string name="cd_navigate_back">Navigate back</string>
+    <string name="cd_edit_mode_done">Finish editing</string>
+    <string name="cd_clear_search">Clear search query</string>
+    <string name="cd_recents_close">Close recents switcher</string>
+    <string name="cd_power_lock">Lock screen</string>
+    <string name="cd_remove_workspace_page">Remove workspace screen</string>
+</resources>

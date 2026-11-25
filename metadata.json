@@ -1,0 +1,8 @@
+{
+  "name": "Kanso-Launcher",
+  "description": "Mecha-Industrial Neumorph Android Home Screen Launcher with bold S-curve color-blocking, pure-Canvas dot-matrix clock, live telemetry widgets, third-party icon pack engine, App Drawer with A-Z scrubber, and native AOD/Lockscreen companions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
