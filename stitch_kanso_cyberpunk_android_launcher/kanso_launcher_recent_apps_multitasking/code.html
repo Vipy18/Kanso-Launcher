@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<meta content="mobile_blank" name="shell-type"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=Space+Mono:ital,wght@0,400;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-container-low": "#1b1c1e",
+            "primary": "#ffd586",
+            "error-container": "#93000a",
+            "surface": "#121315",
+            "tertiary-fixed-dim": "#ffb4aa",
+            "error": "#ffb4ab",
+            "on-primary-fixed": "#261900",
+            "on-primary-fixed-variant": "#5d4200",
+            "secondary": "#bdf4ff",
+            "tertiary": "#ffd0ca",
+            "surface-bright": "#38393b",
+            "primary-fixed": "#ffdea4",
+            "on-tertiary": "#690003",
+            "surface-tint": "#fdbb12",
+            "secondary-container": "#00e3fd",
+            "on-error": "#690005",
+            "on-secondary-fixed": "#001f24",
+            "on-tertiary-fixed": "#410001",
+            "on-tertiary-fixed-variant": "#930005",
+            "surface-container-lowest": "#0d0e10",
+            "on-surface": "#e3e2e4",
+            "on-secondary-fixed-variant": "#004f58",
+            "on-background": "#e3e2e4",
+            "on-tertiary-container": "#a00007",
+            "background": "#121315",
+            "surface-dim": "#121315",
+            "tertiary-container": "#ffa99d",
+            "on-surface-variant": "#d4c4ac",
+            "secondary-fixed-dim": "#00daf3",
+            "outline-variant": "#504533",
+            "on-secondary": "#00363d",
+            "surface-container-highest": "#343537",
+            "inverse-surface": "#e3e2e4",
+            "surface-container-high": "#292a2c",
+            "outline": "#9d8f78",
+            "surface-variant": "#343537",
+            "tertiary-fixed": "#ffdad5",
+            "on-secondary-container": "#00616d",
+            "on-primary": "#412d00",
+            "inverse-primary": "#7b5900",
+            "on-error-container": "#ffdad6",
+            "secondary-fixed": "#9cf0ff",
+            "inverse-on-surface": "#303032",
+            "surface-container": "#1f2022",
+            "on-primary-container": "#654900",
+            "primary-fixed-dim": "#fdbb12",
+            "primary-container": "#f5b400"
+          },
+          borderRadius: {
+            "DEFAULT": "1rem",
+            "lg": "2rem",
+            "xl": "3rem",
+            "full": "9999px"
+          },
+          spacing: {
+            "margin": "1rem",
+            "margin-mobile": "0.75rem",
+            "space-2xl": "2rem",
+            "space-xs": "0.25rem",
+            "gutter-sm": "0.5rem",
+            "space-sm": "0.5rem",
+            "gutter": "0.75rem",
+            "space-lg": "1rem",
+            "space-xl": "1.5rem",
+            "space-md": "0.75rem"
+          },
+          fontFamily: {
+            "headline-md": ["Space Grotesk"],
+            "display-hero": ["Space Grotesk"],
+            "body-md": ["Geist"],
+            "body-lg": ["Geist"],
+            "label-hud-lg": ["Space Mono"],
+            "headline-lg": ["Space Grotesk"],
+            "display-hero-mobile": ["Space Grotesk"],
+            "label-hud-sm": ["Space Mono"],
+            "label-telemetry": ["Space Mono"]
+          },
+          fontSize: {
+            "headline-md": ["20px", { lineHeight: "26px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "display-hero": ["56px", { lineHeight: "56px", letterSpacing: "-0.04em", fontWeight: "700" }],
+            "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+            "body-lg": ["16px", { lineHeight: "22px", fontWeight: "400" }],
+            "label-hud-lg": ["13px", { lineHeight: "16px", letterSpacing: "0.08em", fontWeight: "700" }],
+            "headline-lg": ["28px", { lineHeight: "34px", letterSpacing: "-0.02em", fontWeight: "600" }],
+            "display-hero-mobile": ["44px", { lineHeight: "44px", letterSpacing: "-0.04em", fontWeight: "700" }],
+            "label-hud-sm": ["10px", { lineHeight: "12px", letterSpacing: "0.12em", fontWeight: "400" }],
+            "label-telemetry": ["8px", { lineHeight: "10px", letterSpacing: "0.15em", fontWeight: "700" }]
+          }
+        }
+      }
+    };
+  </script>
+<style>
+    @layer base {
+      html, body {
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        background-color: #0d0e10;
+        color: #e3e2e4;
+        overflow: hidden;
+      }
+      body {
+        overscroll-behavior: none;
+        -webkit-font-smoothing: antialiased;
+      }
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 8px);
+      }
+      .pt-safe {
+        padding-top: env(safe-area-inset-top, 0px);
+      }
+    }
+    ::-webkit-scrollbar {
+      display: none;
+    }
+    .hud-border {
+      box-shadow: 0 0 0 1px rgba(253, 187, 18, 0.2), 0 8px 24px -4px rgba(0, 0, 0, 0.65);
+    }
+    .hud-glow {
+      box-shadow: 0 0 16px -2px rgba(245, 180, 0, 0.25);
+    }
+  </style>
+</head>
+<body class="bg-surface-container-lowest font-body-md text-on-surface flex flex-col h-screen w-screen overflow-hidden select-none">
+<!-- Status Bar (Android Style) -->
+<header class="w-full pt-safe z-50 shrink-0">
+<div class="h-7 px-4 flex items-center justify-between text-on-surface-variant font-label-telemetry text-label-telemetry tracking-widest">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-hud-sm text-label-hud-sm font-semibold tracking-normal text-on-surface">09:41</span>
+<span class="opacity-40 text-outline">•</span>
+<span class="tracking-wider text-outline">KANSO-NET</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-telemetry text-label-telemetry text-primary font-bold">5G+</span>
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">signal_cellular_alt</span>
+<span class="material-symbols-outlined text-[13px] text-on-surface-variant">wifi</span>
+<div class="flex items-center gap-[2px] ml-0.5">
+<span class="font-label-telemetry text-label-telemetry">84%</span>
+<span class="material-symbols-outlined text-[14px] text-on-surface rotate-90">battery_charging_80</span>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Viewport: Android Recents Multitasking Canopy & Carousel -->
+<main class="flex-1 flex flex-col w-full min-h-0 relative">
+<!-- Top HUD Canopy: Memory Telemetry Bar & Quick Clear -->
+<div class="px-margin-mobile pt-1 pb-2 shrink-0 flex items-center justify-between gap-3">
+<!-- RAM Gauge Bar -->
+<div class="flex-1 bg-surface-container/90 border border-outline-variant/30 rounded-full px-3 py-1.5 flex items-center gap-3 backdrop-blur-md">
+<div class="flex items-center gap-1.5 shrink-0">
+<span class="material-symbols-outlined text-primary text-[15px]">memory</span>
+<span class="font-label-telemetry text-label-telemetry text-on-surface font-bold" id="ram-label">RAM: 8.6G / 12G</span>
+</div>
+<div class="flex-1 h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary-container rounded-full transition-all duration-500 shadow-sm" id="ram-bar" style="width: 72%;"></div>
+</div>
+<span class="font-label-telemetry text-label-telemetry text-primary font-bold shrink-0" id="ram-percent">72%</span>
+</div>
+<!-- Quick Clear Button -->
+<button class="h-8 px-3 rounded-full bg-surface-container-high border border-outline-variant/40 text-primary hover:text-white hover:border-primary/60 font-label-telemetry text-label-telemetry font-bold flex items-center gap-1.5 shrink-0 active:scale-95 transition-transform" id="btn-clear-all" type="button">
+<span class="material-symbols-outlined text-[14px]">clear_all</span>
+<span>CLEAR ALL</span>
+</button>
+</div>
+<!-- Horizontal Swipeable Carousel (Android Recents Style with Center Active Card & Side Peeks) -->
+<div class="flex-1 min-h-0 flex items-center justify-center relative overflow-hidden px-1">
+<!-- LEFT CARD PEEK: Terminal // ROOT_SH -->
+<div class="absolute -left-[54%] w-[68%] h-[88%] bg-surface-container-low/75 border border-outline-variant/30 rounded-2xl p-2.5 opacity-40 blur-[0.4px] flex flex-col gap-2 pointer-events-none scale-90 transition-transform shadow-xl">
+<div class="flex items-center gap-2 px-1">
+<div class="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[13px]">terminal</span>
+</div>
+<span class="font-label-hud-sm text-[10px] text-on-surface truncate">TERMINAL // ROOT_SH</span>
+</div>
+<!-- Mock Screen -->
+<div class="flex-1 bg-surface-container-lowest rounded-xl p-2.5 font-label-telemetry text-[9px] text-secondary flex flex-col gap-1 border border-outline-variant/20 overflow-hidden">
+<span class="text-secondary">root@kanso-node01:~# systemctl status</span>
+<span class="text-on-surface-variant">• kanso-daemon.service - active (running)</span>
+<span class="text-outline">PID: 3811 (root_sh)</span>
+<span class="text-secondary/70">Memory: 128 MB allocated</span>
+<span class="text-primary-container mt-1">root@kanso-node01:~# ifconfig eth0</span>
+<span class="text-on-surface-variant">inet 192.168.1.107 mask 255.255.255.0</span>
+</div>
+</div>
+<!-- CENTER ACTIVE CARD: SIGNAL // SECURE COMMS -->
+<article class="w-[82%] max-w-[340px] h-[92%] bg-surface-container rounded-2xl p-2.5 border border-primary-container/40 hud-border hud-glow flex flex-col relative z-20 transition-all duration-300 shadow-2xl" id="card-signal">
+<!-- Corner Cyber HUD Brackets -->
+<span class="absolute top-1 left-2 font-label-hud-sm text-[10px] text-primary/80 pointer-events-none select-none font-bold">┌</span>
+<span class="absolute top-1 right-2 font-label-hud-sm text-[10px] text-primary/80 pointer-events-none select-none font-bold">┐</span>
+<span class="absolute bottom-1 left-2 font-label-hud-sm text-[10px] text-primary/80 pointer-events-none select-none font-bold">└</span>
+<span class="absolute bottom-1 right-2 font-label-hud-sm text-[10px] text-primary/80 pointer-events-none select-none font-bold">┘</span>
+<!-- App Header Bar with Controls -->
+<div class="flex items-center justify-between pb-2 px-1 shrink-0">
+<div class="flex items-center gap-2 min-w-0">
+<div class="w-7 h-7 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shrink-0 shadow-md">
+<span class="material-symbols-outlined text-[15px]" style="font-variation-settings: 'FILL' 1;">encrypted</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-hud-sm text-label-hud-sm font-bold text-on-surface truncate">SIGNAL // COMMS</span>
+<span class="font-label-telemetry text-label-telemetry text-primary/80">PID: 4092 • 412 MB</span>
+</div>
+</div>
+<!-- Window Controls -->
+<div class="flex items-center gap-1">
+<button aria-label="Pin in Memory" class="w-6 h-6 rounded-full bg-surface-container-high text-on-surface-variant hover:text-primary flex items-center justify-center active:scale-90 transition-transform" data-lock="card-signal" type="button">
+<span class="material-symbols-outlined text-[13px]">lock_open</span>
+</button>
+<button aria-label="Split Screen" class="w-6 h-6 rounded-full bg-surface-container-high text-on-surface-variant hover:text-secondary flex items-center justify-center active:scale-90 transition-transform" type="button">
+<span class="material-symbols-outlined text-[13px]">splitscreen</span>
+</button>
+<button aria-label="Close App" class="w-6 h-6 rounded-full bg-surface-container-high text-on-surface-variant hover:text-error flex items-center justify-center active:scale-90 transition-transform" data-close="card-signal" type="button">
+<span class="material-symbols-outlined text-[13px]">close</span>
+</button>
+</div>
+</div>
+<!-- Full Vertical App Screen Preview (Realistic Mockup Screen) -->
+<div class="flex-1 bg-surface-container-lowest rounded-xl border border-outline-variant/30 flex flex-col overflow-hidden relative shadow-inner">
+<!-- Mock Phone Screen In-App Header -->
+<div class="bg-surface-container-low px-2.5 py-1.5 border-b border-outline-variant/20 flex items-center justify-between shrink-0">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+<span class="font-label-hud-sm text-[11px] font-bold text-primary">NODE_07</span>
+<span class="text-[9px] font-label-telemetry text-outline">• E2EE</span>
+</div>
+<div class="flex items-center gap-1 text-primary/70">
+<span class="material-symbols-outlined text-[13px]">verified_user</span>
+<span class="font-label-telemetry text-[8px] text-outline">KEY_VERIFIED</span>
+</div>
+</div>
+<!-- Mock Chat Message Stream -->
+<div class="flex-1 p-2 flex flex-col justify-end gap-2 overflow-hidden text-[11px]">
+<!-- Status Badge -->
+<div class="self-center bg-surface-container-high/60 px-2 py-0.5 rounded-full border border-outline-variant/30 text-[8px] font-label-telemetry text-outline">
+              SESSION ESTABLISHED // 256-BIT AES
+            </div>
+<!-- Incoming Message Bubble -->
+<div class="self-start max-w-[86%] bg-surface-container-high border border-outline-variant/30 text-on-surface rounded-2xl rounded-tl-sm px-2.5 py-1.5 shadow-sm">
+<p class="font-body-md text-[11px] leading-snug">Telemetry packet #884 received. Check sector 4 perimeter telemetry.</p>
+<span class="font-label-telemetry text-[8px] text-outline block text-right mt-0.5">23:14</span>
+</div>
+<!-- Outgoing Message Bubble -->
+<div class="self-end max-w-[86%] bg-primary-container/20 border border-primary-container/40 text-primary rounded-2xl rounded-tr-sm px-2.5 py-1.5 shadow-sm">
+<p class="font-body-md text-[11px] leading-snug">Confirmed. Syncing Kanso-Net master keys now.</p>
+<div class="flex items-center justify-end gap-1 mt-0.5">
+<span class="font-label-telemetry text-[8px] text-primary/70">23:16</span>
+<span class="material-symbols-outlined text-[10px] text-primary">done_all</span>
+</div>
+</div>
+<!-- Active Typing / Stream Notification -->
+<div class="flex items-center gap-1 text-[9px] text-outline font-label-telemetry pl-1">
+<span class="inline-block w-1 h-1 rounded-full bg-primary animate-ping"></span>
+<span>NODE_07 is transmitting data...</span>
+</div>
+</div>
+<!-- Mock In-App Bottom Composer Bar -->
+<div class="p-1.5 bg-surface-container-low border-t border-outline-variant/20 flex items-center gap-1.5 shrink-0">
+<button class="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center text-outline hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-[13px]">mic</span>
+</button>
+<div class="flex-1 bg-surface-container rounded-full px-2.5 py-1 flex items-center justify-between text-outline text-[10px] font-label-hud-sm border border-outline-variant/30">
+<span class="truncate">ENCRYPTED_MSG...</span>
+<span class="material-symbols-outlined text-[12px] text-outline">attach_file</span>
+</div>
+<button class="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow" type="button">
+<span class="material-symbols-outlined text-[13px]">send</span>
+</button>
+</div>
+</div>
+<!-- Card Bottom Sub-Actions: Split Screen & Pop-up -->
+<div class="flex items-center gap-1.5 pt-2 px-0.5 shrink-0">
+<button class="flex-1 h-6 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant font-label-telemetry text-[9px] flex items-center justify-center gap-1 active:scale-95 transition-transform" type="button">
+<span class="material-symbols-outlined text-[11px] text-primary">splitscreen</span>
+<span>SPLIT</span>
+</button>
+<button class="flex-1 h-6 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant font-label-telemetry text-[9px] flex items-center justify-center gap-1 active:scale-95 transition-transform" type="button">
+<span class="material-symbols-outlined text-[11px] text-secondary">open_in_new</span>
+<span>POP-UP</span>
+</button>
+<button class="h-6 px-2 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-on-surface-variant font-label-telemetry text-[9px] flex items-center justify-center gap-1 active:scale-95 transition-transform" type="button">
+<span class="material-symbols-outlined text-[11px] text-outline">info</span>
+</button>
+</div>
+</article>
+<!-- RIGHT CARD PEEK: Optics // CAMERA / BROWSER -->
+<div class="absolute -right-[54%] w-[68%] h-[88%] bg-surface-container-low/75 border border-outline-variant/30 rounded-2xl p-2.5 opacity-40 blur-[0.4px] flex flex-col gap-2 pointer-events-none scale-90 transition-transform shadow-xl">
+<div class="flex items-center gap-2 px-1">
+<div class="w-6 h-6 rounded-full bg-primary-container/30 text-primary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[13px]">photo_camera</span>
+</div>
+<span class="font-label-hud-sm text-[10px] text-on-surface truncate">OPTICS // VISION_02</span>
+</div>
+<!-- Mock Screen -->
+<div class="flex-1 bg-surface-container-lowest rounded-xl p-2 flex flex-col justify-between border border-outline-variant/20 overflow-hidden relative">
+<div class="flex justify-between items-center text-[9px] font-label-telemetry text-primary/80">
+<span>ISO 400</span>
+<span>F/1.8 • 1/250s</span>
+</div>
+<div class="w-12 h-12 border border-primary/40 rounded-full self-center flex items-center justify-center opacity-60">
+<div class="w-1.5 h-1.5 bg-primary rounded-full"></div>
+</div>
+<div class="text-[8px] font-label-telemetry text-outline text-center">TARGET ACQUIRED</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Tactile Android Overview Action Bar & Quick Dock -->
+<div class="px-margin-mobile pt-1 pb-1 shrink-0 flex flex-col gap-2 z-30">
+<!-- Android Overview Actions (Screenshot & Select Text) -->
+<div class="flex items-center gap-2">
+<button class="flex-1 h-9 rounded-full bg-surface-container border border-outline-variant/30 text-on-surface hover:border-primary/50 font-label-hud-sm text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-transform" id="btn-screenshot" type="button">
+<span class="material-symbols-outlined text-[16px] text-primary">screenshot</span>
+<span>SCREENSHOT</span>
+</button>
+<button class="flex-1 h-9 rounded-full bg-surface-container border border-outline-variant/30 text-on-surface hover:border-secondary/50 font-label-hud-sm text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-transform" id="btn-select" type="button">
+<span class="material-symbols-outlined text-[16px] text-secondary">select_all</span>
+<span>SELECT TEXT</span>
+</button>
+</div>
+<!-- Quick Launch Icon Dock (5 Tactile Suggestion App Nodes) -->
+<div class="bg-surface-container/70 border border-outline-variant/25 rounded-2xl py-1.5 px-3 flex items-center justify-between backdrop-blur-md">
+<!-- Dock Item 1: Comms -->
+<button class="dock-item flex flex-col items-center gap-0.5 active:scale-90 transition-transform group" type="button">
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-md">
+<span class="material-symbols-outlined text-[16px]">forum</span>
+</div>
+<span class="font-label-telemetry text-[8px] text-primary font-bold">COMMS</span>
+</button>
+<!-- Dock Item 2: Browser -->
+<button class="dock-item flex flex-col items-center gap-0.5 active:scale-90 transition-transform group" type="button">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 text-on-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px]">public</span>
+</div>
+<span class="font-label-telemetry text-[8px] text-outline">BROWSER</span>
+</button>
+<!-- Dock Item 3: Terminal -->
+<button class="dock-item flex flex-col items-center gap-0.5 active:scale-90 transition-transform group" type="button">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 text-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px]">terminal</span>
+</div>
+<span class="font-label-telemetry text-[8px] text-outline">TERMINAL</span>
+</button>
+<!-- Dock Item 4: Optics -->
+<button class="dock-item flex flex-col items-center gap-0.5 active:scale-90 transition-transform group" type="button">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 text-on-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px]">photo_camera</span>
+</div>
+<span class="font-label-telemetry text-[8px] text-outline">OPTICS</span>
+</button>
+<!-- Dock Item 5: Monitor -->
+<button class="dock-item flex flex-col items-center gap-0.5 active:scale-90 transition-transform group" type="button">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 text-on-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px]">monitoring</span>
+</div>
+<span class="font-label-telemetry text-[8px] text-outline">MONITOR</span>
+</button>
+</div>
+<!-- Monospace HUD Telemetry Footer -->
+<div class="font-label-telemetry text-[8px] text-outline/80 text-center tracking-widest" id="footer-status">
+        RECENTS // 4 ACTIVE APPS // KANSO OS v4.2
+      </div>
+</div>
+<!-- Android Home Pill Bar -->
+<div class="w-full flex justify-center pb-safe pt-1">
+<div class="w-32 h-1 bg-surface-container-highest/80 rounded-full"></div>
+</div>
+</main>
+<script>
+    (function () {
+      const ramBar = document.getElementById('ram-bar');
+      const ramLabel = document.getElementById('ram-label');
+      const ramPercent = document.getElementById('ram-percent');
+      const btnClearAll = document.getElementById('btn-clear-all');
+      const cardSignal = document.getElementById('card-signal');
+      const footerStatus = document.getElementById('footer-status');
+
+      document.querySelectorAll('[data-lock]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const icon = btn.querySelector('.material-symbols-outlined');
+          const isLocked = icon.textContent.trim() === 'lock';
+          icon.textContent = isLocked ? 'lock_open' : 'lock';
+          btn.classList.toggle('bg-primary-container', !isLocked);
+          btn.classList.toggle('text-on-primary-container', !isLocked);
+          btn.classList.toggle('bg-surface-container-high', isLocked);
+          btn.classList.toggle('text-on-surface-variant', isLocked);
+        });
+      });
+
+      document.querySelectorAll('[data-close]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const card = document.getElementById(btn.getAttribute('data-close'));
+          if (card) {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(-60px) scale(0.9)';
+            setTimeout(() => {
+              card.remove();
+              if (ramBar && ramLabel && ramPercent) {
+                ramBar.style.width = '48%';
+                ramLabel.textContent = 'RAM: 5.8G / 12G';
+                ramPercent.textContent = '48%';
+              }
+              if (footerStatus) {
+                footerStatus.textContent = 'RECENTS // 3 ACTIVE APPS // KANSO OS v4.2';
+              }
+            }, 250);
+          }
+        });
+      });
+
+      if (btnClearAll) {
+        btnClearAll.addEventListener('click', () => {
+          if (cardSignal) {
+            cardSignal.style.opacity = '0';
+            cardSignal.style.transform = 'translateY(-100px) scale(0.85)';
+            setTimeout(() => {
+              cardSignal.remove();
+              if (footerStatus) {
+                footerStatus.textContent = 'RECENTS // 0 ACTIVE APPS // STANDBY';
+              }
+              if (ramBar && ramLabel && ramPercent) {
+                ramBar.style.width = '24%';
+                ramLabel.textContent = 'RAM: 2.9G / 12G';
+                ramPercent.textContent = '24%';
+              }
+            }, 260);
+          }
+        });
+      }
+    })();
+  </script>
+</body></html>
