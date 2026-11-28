@@ -100,3 +100,35 @@ adb shell ps -A | grep <package_name>
 # 3. Verify tapping empty Recents space returns directly to Kanso LauncherActivity
 adb shell dumpsys activity activities | grep mResumedActivity
 ```
+
+---
+
+## GitHub Actions CI/CD & Keystore Security
+
+This repository includes three automated workflows under `.github/workflows/`:
+
+1. **`block-keystores.yml` (`block-keystores`)**: Runs on every push and pull request (including forks) to block any `*.jks`, `*.keystore`, `*.p12`, `*.pfx`, or `*.bks` file in the tracked tree or diff.
+2. **`debug-apk.yml`**: Builds `kanso-launcher-debug.apk` on `main` pushes, pull requests, and manual dispatches, uploads it as an Actions artifact, and commits it to the repo root on `main`. Uses `DEBUG_KEYSTORE_BASE64` if set, or auto-generates a temporary runner debug keystore so fork PRs build cleanly without secrets.
+3. **`release-apk.yml`**: Builds, aligns, and signs `kanso-launcher-release.apk` with Android SDK `apksigner` using Release GitHub Secrets, uploads it as an Actions artifact, commits it to the repo root on `main` pushes, and publishes a GitHub Release on `v*` tags.
+
+### Required GitHub Repository Secrets
+
+Add these under **Settings → Secrets and variables → Actions → New repository secret**:
+
+- **Release Signing (Required for `release-apk.yml`)**:
+  - `RELEASE_KEYSTORE_BASE64` — Base64-encoded release keystore (`base64 -w 0 release.jks` on Linux / `base64 -i release.jks | tr -d '\n'` on macOS / `[Convert]::ToBase64String([IO.File]::ReadAllBytes("release.jks"))` in PowerShell)
+  - `RELEASE_KEYSTORE_PASSWORD` — Keystore store password
+  - `RELEASE_KEY_ALIAS` — Signing key alias
+  - `RELEASE_KEY_PASSWORD` — Signing key password
+- **Debug Signing (Optional for `debug-apk.yml`; auto-generated on runner if omitted)**:
+  - `DEBUG_KEYSTORE_BASE64`
+  - `DEBUG_KEYSTORE_PASSWORD`
+  - `DEBUG_KEY_ALIAS`
+  - `DEBUG_KEY_PASSWORD`
+
+### Required Status Check (Branch Protection / Ruleset)
+
+To prevent any PR or fork merge from introducing keystore files:
+1. Open **Settings → Rules → Rulesets** (or **Settings → Branches → Branch protection rules**) for `main`.
+2. Enable **Require status checks to pass before merging** (and **Require branches to be up to date before merging**).
+3. Search for and add **`block-keystores`** as a required check.
