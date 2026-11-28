@@ -37,6 +37,7 @@ metadata.json
 # Agent system files
 .agents/
 agents/
+.agents/plugins/superpowers/tests/brainstorm-server
 AGENTS.md
 comm.md
 tasks.md
