@@ -16,7 +16,7 @@ import com.kanso.launcher.data.prefs.IconPackMode
 import com.kanso.launcher.data.prefs.KansoPreferences
 import com.kanso.launcher.data.prefs.ThemeMode
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -74,7 +74,7 @@ class PreferencesAndConfigTest {
     }
 
     @Test
-    fun kansoPreferences_persistsThemeClampingWidgetsBookmarksAndWeather() = runTest {
+    fun kansoPreferences_persistsThemeClampingWidgetsBookmarksAndWeather() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val prefs = KansoPreferences(context)
 

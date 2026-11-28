@@ -33,7 +33,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class)
+@Config(sdk = [35], qualifiers = "w412dp-h915dp-xhdpi", application = Application::class)
 class KansoComposeUiRobolectricTest {
 
     @get:Rule
@@ -90,11 +90,11 @@ class KansoComposeUiRobolectricTest {
         composeRule.onNodeWithTag("kanso_shade_overlay").assertIsDisplayed()
         composeRule.onNodeWithText("Alex").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("shade_clear_all_btn").performClick()
+        composeRule.onNodeWithTag("notifications_clear_all").performClick()
         composeRule.waitForIdle()
         assertTrue(clearedAll)
 
-        composeRule.onNodeWithTag("shade_tab_controls").performClick()
+        composeRule.onNodeWithTag("shade_toggle_stage_button").performClick()
         composeRule.waitForIdle()
         assertEquals(ShadeStage.CONTROLS, stageChangedTo)
     }
@@ -141,7 +141,7 @@ class KansoComposeUiRobolectricTest {
         composeRule.waitForIdle()
         assertEquals(KansoActionId.TORCH, executedTile?.action)
 
-        composeRule.onNodeWithTag("shade_edit_tiles_btn").performClick()
+        composeRule.onNodeWithTag("control_panel_edit_toggle").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("control_panel_reset_tiles").assertIsDisplayed().performClick()
         composeRule.waitForIdle()
@@ -199,10 +199,10 @@ class KansoComposeUiRobolectricTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("modular_widget_add_dialog").assertIsDisplayed()
-        composeRule.onNodeWithTag("widget_tab_accent").performClick()
+        composeRule.onNodeWithTag("widget_add_preview_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("widget_picker_tab_1").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("widget_tab_kanso").performClick()
+        composeRule.onNodeWithTag("widget_picker_tab_0").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("place_widget_stitch_clock_DEFAULT").performClick()
         composeRule.waitForIdle()

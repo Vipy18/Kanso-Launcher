@@ -21,6 +21,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -147,6 +148,8 @@ class RecentsActivity : ComponentActivity() {
                         finish()
                     },
                     onGoHome = {
+                        KansoAccessibilityService.suppressRedirectUntil = System.currentTimeMillis() + 600L
+                        KansoAccessibilityService.notifyRecentsOpened(600L)
                         val home = Intent(this, LauncherActivity::class.java).apply {
                             addFlags(
                                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -337,11 +340,9 @@ private fun RecentsCarouselScreen(
                     )
                 )
             )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = animatedDismiss
-            )
+            .pointerInput(Unit) {
+                detectTapGestures { animatedGoHome() }
+            }
     ) {
         Column(
             modifier = Modifier
@@ -458,7 +459,7 @@ private fun RecentsCarouselScreen(
                         .clip(CircleShape)
                         .background(Color(0xFF1F2022))
                         .border(0.75.dp, Color.White.copy(alpha = 0.10f), CircleShape)
-                        .kansoTactileClickable(onClick = animatedDismiss),
+                        .kansoTactileClickable(onClick = animatedGoHome),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -561,6 +562,9 @@ private fun RecentsCarouselScreen(
                             modifier = Modifier
                                 .testTag("recents_horizontal_pager")
                                 .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures { animatedGoHome() }
+                                }
                         ) { page ->
                             val entry = recents.getOrNull(page) ?: return@HorizontalPager
                             val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction)
@@ -582,6 +586,11 @@ private fun RecentsCarouselScreen(
                                     .zIndex(10f - absOffset)
                                     .fillMaxWidth()
                                     .fillMaxHeight(0.92f)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {}
+                                    )
                                     .graphicsLayer {
                                         cameraDistance = 16f * density
                                         rotationY = (pageOffset * -13.5f).coerceIn(-22f, 22f)
@@ -737,19 +746,25 @@ private fun RecentsCarouselScreen(
                                         )
                                     }
 
-                                    // Close button
+                                    // Close button (tap: kill & dismiss; long-press: App Info for Force Stop)
                                     Box(
                                         modifier = Modifier
                                             .testTag("recent_dismiss_${entry.app.packageName}")
                                             .size(28.dp)
                                             .clip(CircleShape)
                                             .background(Color(0xFF292A2C))
-                                            .kansoTactileClickable {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                pinnedPackages.remove(entry.app.packageName)
-                                                RecentsSnapshotCache.closeRecentTask(context, entry.app.packageName)
-                                                recents.remove(entry)
-                                            },
+                                            .kansoTactileClickable(
+                                                onLongClick = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    openAppInfo(entry.app.packageName)
+                                                },
+                                                onClick = {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    pinnedPackages.remove(entry.app.packageName)
+                                                    RecentsSnapshotCache.closeRecentTask(context, entry.app.packageName)
+                                                    recents.remove(entry)
+                                                }
+                                            ),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(

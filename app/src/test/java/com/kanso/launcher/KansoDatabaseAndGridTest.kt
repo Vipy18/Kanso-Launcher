@@ -148,8 +148,9 @@ class KansoDatabaseAndGridTest {
     @Test
     fun surfacePageIndexMapping_matchesWorkspaceAndLockscreenSlots() {
         assertEquals(SurfacePage.WORKSPACE, SurfacePage.workspacePageIndex(0))
-        assertEquals(SurfacePage.WORKSPACE + 1, SurfacePage.workspacePageIndex(1))
-        assertEquals(SurfacePage.WORKSPACE + 5, SurfacePage.workspacePageIndex(5))
-        assertTrue(SurfacePage.LOCKSCREEN > SurfacePage.workspacePageIndex(5))
+        assertEquals(10, SurfacePage.workspacePageIndex(1))
+        assertEquals(14, SurfacePage.workspacePageIndex(5))
+        val workspaceIndices = (0..5).map { SurfacePage.workspacePageIndex(it) }.toSet()
+        assertFalse(SurfacePage.LOCKSCREEN in workspaceIndices)
     }
 }

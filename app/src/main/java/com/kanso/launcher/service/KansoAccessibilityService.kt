@@ -53,6 +53,9 @@ class KansoAccessibilityService : AccessibilityService() {
         private var suppressHomeRedirectUntilMs: Long = 0L
 
         @Volatile
+        var suppressRedirectUntil: Long = 0L
+
+        @Volatile
         private var assistedForceStopPkg: String? = null
 
         @Volatile
@@ -64,6 +67,7 @@ class KansoAccessibilityService : AccessibilityService() {
         private const val HOME_REDIRECT_DEBOUNCE_MS = 160L
         private const val RECENTS_HOME_SUPPRESS_MS = 1800L
         private const val FORCE_STOP_WINDOW_MS = 7000L
+        private const val QS_TILE_SUPPRESS_MS = 2600L
 
         private val oemHomePackages = setOf(
             "com.hihonor.android.launcher",
@@ -190,6 +194,37 @@ class KansoAccessibilityService : AccessibilityService() {
                 false
             }
         }
+
+        /**
+         * Tier 2 fallback: opens Quick Settings via Accessibility, searches active system windows
+         * for a tile matching any locale-aware label in [labels], clicks it, and dismisses the shade.
+         * Returns true if the Accessibility QS sequence was initiated; [onComplete] reports whether
+         * a matching tile was actually found and clicked.
+         */
+        fun toggleQuickSettingsTile(
+            labels: List<String>,
+            onComplete: ((Boolean) -> Unit)? = null
+        ): Boolean {
+            val svc = instance
+            if (svc == null || labels.isEmpty()) {
+                onComplete?.invoke(false)
+                return false
+            }
+            val now = System.currentTimeMillis()
+            suppressRedirectUntil = maxOf(suppressRedirectUntil, now + QS_TILE_SUPPRESS_MS)
+            suppressHomeRedirectUntilMs = maxOf(suppressHomeRedirectUntilMs, now + QS_TILE_SUPPRESS_MS)
+            svc.cancelPendingHomeRedirect()
+
+            val opened = runCatching { svc.performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS) }.getOrDefault(false)
+            if (!opened) {
+                onComplete?.invoke(false)
+                return false
+            }
+
+            val normalizedLabels = labels.map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotEmpty() }
+            svc.scheduleQuickSettingsTileClick(normalizedLabels, attempt = 0, onComplete = onComplete)
+            return true
+        }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -303,7 +338,7 @@ class KansoAccessibilityService : AccessibilityService() {
 
         // 3. Debounced OEM stock home interceptor on Chinese OEM ROMs (never while Recents is active/settling)
         if (RomDetector.isChineseRom() && pkg in oemHomePackages) {
-            if (RecentsActivity.isForeground || now < suppressHomeRedirectUntilMs) {
+            if (RecentsActivity.isForeground || now < suppressRedirectUntil || now < suppressHomeRedirectUntilMs) {
                 cancelPendingHomeRedirect()
                 return
             }
@@ -328,6 +363,7 @@ class KansoAccessibilityService : AccessibilityService() {
         val runnable = Runnable {
             val now = System.currentTimeMillis()
             if (RecentsActivity.isForeground ||
+                now < suppressRedirectUntil ||
                 now < suppressHomeRedirectUntilMs ||
                 isAssistedForceStopActive(now)
             ) {
@@ -518,6 +554,59 @@ class KansoAccessibilityService : AccessibilityService() {
             depth++
         }
         return null
+    }
+
+    private fun scheduleQuickSettingsTileClick(
+        normalizedLabels: List<String>,
+        attempt: Int,
+        onComplete: ((Boolean) -> Unit)?
+    ) {
+        val delayMs = if (attempt == 0) 380L else 420L
+        mainHandler.postDelayed({
+            if (instance !== this) {
+                onComplete?.invoke(false)
+                return@postDelayed
+            }
+            val matchedNode = findQuickSettingsTileNode(normalizedLabels)
+            if (matchedNode != null) {
+                val clicked = runCatching {
+                    matchedNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                }.getOrDefault(false)
+                mainHandler.postDelayed({ dismissNotificationShade() }, 220L)
+                onComplete?.invoke(clicked)
+            } else if (attempt == 0) {
+                scheduleQuickSettingsTileClick(normalizedLabels, attempt = 1, onComplete = onComplete)
+            } else {
+                dismissNotificationShade()
+                onComplete?.invoke(false)
+            }
+        }, delayMs)
+    }
+
+    private fun findQuickSettingsTileNode(normalizedLabels: List<String>): AccessibilityNodeInfo? {
+        val roots = buildList {
+            runCatching { rootInActiveWindow }.getOrNull()?.let { add(it) }
+            runCatching { windows }.getOrNull().orEmpty().forEach { win ->
+                runCatching { win.root }.getOrNull()?.let { add(it) }
+            }
+        }
+        for (root in roots) {
+            val match = findClickableNodeByLabels(root, normalizedLabels)
+            if (match != null) return match
+        }
+        return null
+    }
+
+    private fun dismissNotificationShade() {
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (!performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)) {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                }
+            } else {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+        }
     }
 
     private fun isKeyguardWindow(pkg: String, cls: String): Boolean {

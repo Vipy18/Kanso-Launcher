@@ -33,6 +33,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.Settings
+import android.util.Log
 import android.view.Display
 import android.view.Surface
 import android.widget.Toast
@@ -40,6 +41,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.kanso.launcher.data.model.KansoActionId
 import com.kanso.launcher.data.model.TelemetryMetric
+import com.kanso.launcher.service.KansoAccessibilityService
 import com.kanso.launcher.service.KansoNotificationListener
 import com.kanso.launcher.service.KansoPerformanceGovernor
 import com.kanso.launcher.util.RomDetector
@@ -1078,41 +1080,70 @@ class TelemetryRepository(
     }
 
     /**
-     * Direct-API Battery Saver toggle:
-     * Uses WRITE_SECURE_SETTINGS (`Settings.Global["low_power"]` + Honor/Huawei `SmartModeStatus`).
-     * Opens Battery Saver Settings directly if blocked or ignored by OEM power manager.
+     * 3-Tier Battery Saver toggle:
+     * - Tier 1: WRITE_SECURE_SETTINGS (`Settings.Global["low_power"]` + Honor/Huawei `SmartModeStatus`),
+     *   verified after 300ms against live `PowerManager.isPowerSaveMode`.
+     * - Tier 2: Accessibility Quick Settings tile automation (locale-aware EN + ZH labels).
+     * - Tier 3: Fallback to Android Battery Saver Settings (`openPowerSavingSettings()`).
      */
     fun togglePowerSaving(): Boolean {
-        val enable = !_telemetry.value.isPowerSaveEnabled
-        if (!RomDetector.hasWriteSecureSettings(context)) {
-            openPowerSavingSettings()
-            return false
-        }
+        val currentPowerSave = runCatching { powerManager.isPowerSaveMode }
+            .getOrDefault(_telemetry.value.isPowerSaveEnabled)
+        val enable = !currentPowerSave
 
-        val wroteGlobal = runCatching {
-            Settings.Global.putInt(context.contentResolver, "low_power", if (enable) 1 else 0)
-        }.getOrDefault(false)
+        val hasSecureSettings = RomDetector.hasWriteSecureSettings(context) ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_SECURE_SETTINGS) ==
+            PackageManager.PERMISSION_GRANTED
 
-        if (RomDetector.isHonorOrHuawei() && Settings.System.canWrite(context)) {
-            runCatching {
-                Settings.System.putInt(context.contentResolver, "SmartModeStatus", if (enable) 4 else 1)
+        if (hasSecureSettings) {
+            val wroteGlobal = runCatching {
+                Settings.Global.putInt(context.contentResolver, "low_power", if (enable) 1 else 0)
+            }.getOrDefault(false)
+
+            if (RomDetector.isHonorOrHuawei()) {
+                runCatching {
+                    Settings.System.putInt(
+                        context.contentResolver,
+                        "SmartModeStatus",
+                        if (enable) 4 else 1
+                    )
+                }
+            }
+
+            if (wroteGlobal) {
+                _telemetry.update { it.copy(isPowerSaveEnabled = enable) }
+                mainHandler.postDelayed({
+                    val actual = runCatching { powerManager.isPowerSaveMode }.getOrDefault(enable)
+                    _telemetry.update { it.copy(isPowerSaveEnabled = actual) }
+                    if (actual == enable) {
+                        Log.i("KansoTelemetry", "Battery Saver toggled via WRITE_SECURE_SETTINGS -> $actual")
+                    } else {
+                        Log.w(
+                            "KansoTelemetry",
+                            "WRITE_SECURE_SETTINGS did not change PowerManager.isPowerSaveMode (expected=$enable, actual=$actual); falling back to Tier 2/3"
+                        )
+                        tryBatterySaverAccessibilityOrSettings()
+                    }
+                }, 300L)
+                return true
             }
         }
 
-        if (!wroteGlobal) {
-            openPowerSavingSettings()
-            return false
-        }
+        return tryBatterySaverAccessibilityOrSettings()
+    }
 
-        _telemetry.update { it.copy(isPowerSaveEnabled = enable) }
-        mainHandler.postDelayed({
-            val actual = runCatching { powerManager.isPowerSaveMode }.getOrDefault(enable)
-            _telemetry.update { it.copy(isPowerSaveEnabled = actual) }
-            if (actual != enable) {
+    private fun tryBatterySaverAccessibilityOrSettings(): Boolean {
+        val labels = listOf("Battery Saver", "Power saving", "省电模式", "低电量模式", "节电模式")
+        val started = KansoAccessibilityService.toggleQuickSettingsTile(labels) { matched ->
+            if (matched) {
+                Log.i("KansoTelemetry", "Battery Saver toggled via Accessibility QS tile")
+                mainHandler.postDelayed({ updateSystemToggles() }, 300L)
+            } else {
+                Log.w("KansoTelemetry", "Accessibility QS Battery Saver tile failed; opening Settings fallback")
                 openPowerSavingSettings()
             }
-        }, 320L)
-        return true
+        }
+        return started
     }
 
     /**

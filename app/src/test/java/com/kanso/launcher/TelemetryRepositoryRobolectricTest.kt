@@ -133,6 +133,21 @@ class TelemetryRepositoryRobolectricTest {
     }
 
     @Test
+    fun togglePowerSaving_withWriteSecureSettingsTogglesLowPowerDirectlyWithoutOpeningSettings() {
+        val shadowApp = Shadows.shadowOf(app)
+        shadowApp.grantPermissions(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+        shadowApp.clearNextStartedActivities()
+        Settings.Global.putInt(app.contentResolver, "low_power", 0)
+
+        val handled = repo.togglePowerSaving()
+
+        assertTrue(handled)
+        assertEquals(1, Settings.Global.getInt(app.contentResolver, "low_power", -1))
+        assertTrue(repo.telemetry.value.isPowerSaveEnabled)
+        assertEquals(null, shadowApp.nextStartedActivity)
+    }
+
+    @Test
     fun telemetryState_allActionActiveFlagsAndReadoutsWork() {
         val state = TelemetryState(
             batteryPercent = 82,

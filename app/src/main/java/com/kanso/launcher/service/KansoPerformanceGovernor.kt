@@ -102,8 +102,12 @@ object KansoPerformanceGovernor {
     fun stop() {
         running.set(false)
         mainHandler.removeCallbacks(animationReleaseRunnable)
-        mainHandler.post {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
             runCatching { Choreographer.getInstance().removeFrameCallback(frameCallback) }
+        } else {
+            mainHandler.post {
+                runCatching { Choreographer.getInstance().removeFrameCallback(frameCallback) }
+            }
         }
     }
 

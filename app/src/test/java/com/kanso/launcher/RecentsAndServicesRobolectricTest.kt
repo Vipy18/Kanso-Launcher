@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.kanso.launcher.receiver.BootReceiver
 import com.kanso.launcher.service.KansoDreamService
 import com.kanso.launcher.service.KansoLifecycleService
+import com.kanso.launcher.service.KansoPerformanceGovernor
 import com.kanso.launcher.service.RecentsSnapshotCache
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -22,6 +23,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowChoreographer
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
@@ -31,13 +33,17 @@ class RecentsAndServicesRobolectricTest {
 
     @Before
     fun setUp() {
+        ShadowChoreographer.setPaused(true)
         context = ApplicationProvider.getApplicationContext()
+        KansoPerformanceGovernor.stop()
         RecentsSnapshotCache.clear()
     }
 
     @After
     fun tearDown() {
+        KansoPerformanceGovernor.stop()
         RecentsSnapshotCache.clear()
+        ShadowChoreographer.reset()
     }
 
     @Test
@@ -93,5 +99,22 @@ class RecentsAndServicesRobolectricTest {
         receiver.onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         receiver.onReceive(context, Intent("com.example.OTHER"))
         receiver.onReceive(null, null)
+    }
+
+    @Test
+    fun accessibilityService_redirectSuppressionAndDisconnectedQsFallbackAreSafe() {
+        val futureMs = System.currentTimeMillis() + 600L
+        com.kanso.launcher.service.KansoAccessibilityService.suppressRedirectUntil = futureMs
+        assertEquals(futureMs, com.kanso.launcher.service.KansoAccessibilityService.suppressRedirectUntil)
+
+        var callbackResult: Boolean? = null
+        val initiated = com.kanso.launcher.service.KansoAccessibilityService.toggleQuickSettingsTile(
+            listOf("Battery Saver", "省电模式")
+        ) { matched ->
+            callbackResult = matched
+        }
+        assertFalse(initiated)
+        assertEquals(false, callbackResult)
+        com.kanso.launcher.service.KansoAccessibilityService.suppressRedirectUntil = 0L
     }
 }
