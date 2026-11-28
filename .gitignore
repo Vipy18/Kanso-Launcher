@@ -3,6 +3,7 @@
 app/build/
 .build-outputs/
 *.apk
+!kanso-launcher-release.apk
 *.aab
 *.aar
 
