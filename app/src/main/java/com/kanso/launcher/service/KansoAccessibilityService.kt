@@ -5,8 +5,12 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.kanso.launcher.KansoApplication
 import com.kanso.launcher.LauncherActivity
 import com.kanso.launcher.ui.lockscreen.LockscreenActivity
@@ -21,16 +25,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.util.ArrayDeque
+import java.util.Locale
 
 /**
  * Unified Accessibility Bridge for Kanso Launcher:
  * 1. Forces Kanso Multitasking (RecentsActivity) over stock SystemUI / OEM Recents on ALL devices
- *    whenever enabled in Settings.
+ *    via window/node disambiguation and KEYCODE_APP_SWITCH interception.
  * 2. Forces Kanso Lockscreen over stock Keyguard when Lockscreen Companion is enabled.
- * 3. Captures throttled Android 11+ Accessibility window snapshots into RecentsSnapshotCache
- *    for live Multitasking previews.
- * 4. Intercepts hard-locked Chinese OEM stock launchers back to Kanso Home.
- * 5. Executes hardware Global Actions (Lock Screen, System Recents, Screenshot).
+ * 3. Captures throttled Android 11+ Accessibility window snapshots into RecentsSnapshotCache.
+ * 4. Debounces Chinese OEM stock Home interception so Recents gestures and system panels settle cleanly.
+ * 5. Assists explicit Force Stop confirmation on Android App Info when requested by the user.
  */
 class KansoAccessibilityService : AccessibilityService() {
 
@@ -43,6 +48,22 @@ class KansoAccessibilityService : AccessibilityService() {
 
         @Volatile
         private var lockscreenShownForCurrentLockCycle: Boolean = false
+
+        @Volatile
+        private var suppressHomeRedirectUntilMs: Long = 0L
+
+        @Volatile
+        private var assistedForceStopPkg: String? = null
+
+        @Volatile
+        private var assistedForceStopUntilMs: Long = 0L
+
+        @Volatile
+        private var assistedForceStopClickedPrimary: Boolean = false
+
+        private const val HOME_REDIRECT_DEBOUNCE_MS = 160L
+        private const val RECENTS_HOME_SUPPRESS_MS = 1800L
+        private const val FORCE_STOP_WINDOW_MS = 7000L
 
         private val oemHomePackages = setOf(
             "com.hihonor.android.launcher",
@@ -64,11 +85,87 @@ class KansoAccessibilityService : AccessibilityService() {
             "com.huawei.android.launcher",
             "com.oppo.launcher",
             "com.oneplus.launcher",
-            "com.bbk.launcher2"
+            "com.bbk.launcher2",
+            "com.vivo.launcher"
         )
+
+        private val settingsPackages = setOf(
+            "com.android.settings",
+            "com.hihonor.settings",
+            "com.huawei.settings",
+            "com.miui.securitycenter",
+            "com.coloros.settings",
+            "com.oplus.settings",
+            "com.vivo.settings"
+        )
+
+        private val recentsClassKeywords = listOf(
+            "recents",
+            "overview",
+            "taskview",
+            "taskswitcher",
+            "multitask",
+            "recent",
+            "hwrecents",
+            "splitscreen",
+            "freeform",
+            "gesturenav"
+        )
+
+        private val recentsTextMarkers = listOf(
+            "recents",
+            "recent apps",
+            "overview",
+            "clear all",
+            "close all",
+            "最近任务",
+            "最近使用",
+            "一键清理",
+            "全部清除",
+            "清除全部",
+            "多任务"
+        )
+
+        private val recentsViewIdMarkers = listOf(
+            "recents",
+            "clear_all",
+            "clearall",
+            "clean_all",
+            "task_view",
+            "taskview",
+            "hwrecents",
+            "recent_apps",
+            "memory_info",
+            "ram_info"
+        )
+
+        private val forceStopPrimaryLabels = listOf("force stop", "强行停止", "结束运行")
+        private val forceStopConfirmLabels = listOf("force stop", "ok", "强行停止", "确定", "停止")
 
         fun resetLockCycleLatch() {
             lockscreenShownForCurrentLockCycle = false
+        }
+
+        fun notifyRecentsOpened(durationMs: Long = RECENTS_HOME_SUPPRESS_MS) {
+            suppressHomeRedirectUntilMs = maxOf(
+                suppressHomeRedirectUntilMs,
+                System.currentTimeMillis() + durationMs
+            )
+            instance?.cancelPendingHomeRedirect()
+        }
+
+        /**
+         * Arms a short-lived assisted Force Stop observer right before launching Android App Info
+         * for [targetPackage]. Only runs when explicitly triggered by the user's Force Stop button.
+         */
+        fun requestAssistedForceStop(targetPackage: String) {
+            if (targetPackage.isBlank()) return
+            val now = System.currentTimeMillis()
+            assistedForceStopPkg = targetPackage
+            assistedForceStopUntilMs = now + FORCE_STOP_WINDOW_MS
+            assistedForceStopClickedPrimary = false
+            suppressHomeRedirectUntilMs = maxOf(suppressHomeRedirectUntilMs, now + FORCE_STOP_WINDOW_MS)
+            instance?.cancelPendingHomeRedirect()
         }
 
         fun performLockScreen(): Boolean {
@@ -96,9 +193,11 @@ class KansoAccessibilityService : AccessibilityService() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
     private var forceRecentsOverride = false
+
     @Volatile
     private var forceLockscreenOverride = false
 
@@ -107,6 +206,7 @@ class KansoAccessibilityService : AccessibilityService() {
     private var lastLockRedirectMs: Long = 0L
     private var lastSnapshotCaptureMs: Long = 0L
     private var currentTrackedAppPkg: String = ""
+    private var pendingHomeRedirectRunnable: Runnable? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -124,17 +224,60 @@ class KansoAccessibilityService : AccessibilityService() {
         }
     }
 
+    override fun onKeyEvent(event: KeyEvent?): Boolean {
+        if (event == null) return super.onKeyEvent(event)
+        if (forceRecentsOverride &&
+            event.keyCode == KeyEvent.KEYCODE_APP_SWITCH &&
+            event.action == KeyEvent.ACTION_DOWN
+        ) {
+            val now = System.currentTimeMillis()
+            cancelPendingHomeRedirect()
+            suppressHomeRedirectUntilMs = maxOf(suppressHomeRedirectUntilMs, now + RECENTS_HOME_SUPPRESS_MS)
+            if (now - lastRecentsRedirectMs > 450L) {
+                lastRecentsRedirectMs = now
+                if (currentTrackedAppPkg.isNotBlank()) {
+                    captureSnapshotIfPermitted(currentTrackedAppPkg, now)
+                }
+                launchKansoRecents()
+            }
+            return true
+        }
+        return super.onKeyEvent(event)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val pkg = event.packageName?.toString() ?: return
-        val cls = event.className?.toString().orEmpty()
+        if (event == null) return
+        val eventType = event.eventType
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) return
+
         val now = System.currentTimeMillis()
 
-        // Ignore Kanso's own windows
-        if (pkg == packageName) return
+        // 0. Assisted Force Stop flow (only when explicitly armed by Recents Force Stop button)
+        if (isAssistedForceStopActive(now)) {
+            val activePkg = event.packageName?.toString()
+                ?: rootInActiveWindow?.packageName?.toString().orEmpty()
+            if (activePkg in settingsPackages) {
+                cancelPendingHomeRedirect()
+                handleAssistedForceStopStep(now)
+            }
+            return
+        }
+
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        val cls = event.className?.toString().orEmpty()
+
+        // Ignore Kanso's own windows and cancel any pending OEM Home redirect
+        if (pkg == packageName) {
+            cancelPendingHomeRedirect()
+            return
+        }
 
         // 1. Force Kanso Lockscreen over stock Keyguard when toggled on in Settings (all devices)
         if (forceLockscreenOverride && isKeyguardWindow(pkg, cls)) {
+            cancelPendingHomeRedirect()
             if (!lockscreenShownForCurrentLockCycle && now - lastLockRedirectMs > 800L) {
                 lastLockRedirectMs = now
                 lockscreenShownForCurrentLockCycle = true
@@ -143,11 +286,13 @@ class KansoAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 2. Force Kanso Multitasking (RecentsActivity) over stock Recents/Overview when toggled on (all devices)
-        if (forceRecentsOverride && isStockRecentsWindow(pkg, cls)) {
-            if (now - lastRecentsRedirectMs > 650L) {
+        // 2. Force Kanso Multitasking (RecentsActivity) over stock Recents/Overview when toggled on
+        val isRecentsWindow = isStockRecentsWindow(pkg, cls, event)
+        if (isRecentsWindow) {
+            cancelPendingHomeRedirect()
+            suppressHomeRedirectUntilMs = maxOf(suppressHomeRedirectUntilMs, now + RECENTS_HOME_SUPPRESS_MS)
+            if (forceRecentsOverride && now - lastRecentsRedirectMs > 650L) {
                 lastRecentsRedirectMs = now
-                // Snapshot last active foreground app before overlaying Kanso Recents
                 if (currentTrackedAppPkg.isNotBlank()) {
                     captureSnapshotIfPermitted(currentTrackedAppPkg, now)
                 }
@@ -156,23 +301,20 @@ class KansoAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 3. Intercept OEM stock home packages on Chinese OEM ROMs where default launcher is hard-locked
-        if (RomDetector.isChineseRom() && pkg in oemHomePackages && !isStockRecentsWindow(pkg, cls)) {
-            if (now - lastHomeRedirectMs > 450L) {
-                lastHomeRedirectMs = now
-                val homeIntent = Intent(this, LauncherActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                    )
-                }
-                runCatching { startActivity(homeIntent) }
+        // 3. Debounced OEM stock home interceptor on Chinese OEM ROMs (never while Recents is active/settling)
+        if (RomDetector.isChineseRom() && pkg in oemHomePackages) {
+            if (RecentsActivity.isForeground || now < suppressHomeRedirectUntilMs) {
+                cancelPendingHomeRedirect()
+                return
             }
+            scheduleDebouncedChineseHomeRedirect()
             return
         }
 
-        // 4. Track active user app & capture throttled Android 11+ window snapshot for Multitasking previews
+        // 4. Non-OEM app or SystemUI window appeared — cancel any queued Home redirect
+        cancelPendingHomeRedirect()
+
+        // 5. Track active user app & capture throttled Android 11+ window snapshot for Multitasking previews
         if (pkg != "com.android.systemui" && pkg != "android") {
             currentTrackedAppPkg = pkg
             if (forceRecentsOverride) {
@@ -181,19 +323,206 @@ class KansoAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isStockRecentsWindow(pkg: String, cls: String): Boolean {
+    private fun scheduleDebouncedChineseHomeRedirect() {
+        cancelPendingHomeRedirect()
+        val runnable = Runnable {
+            val now = System.currentTimeMillis()
+            if (RecentsActivity.isForeground ||
+                now < suppressHomeRedirectUntilMs ||
+                isAssistedForceStopActive(now)
+            ) {
+                return@Runnable
+            }
+            if (now - lastHomeRedirectMs <= 450L) return@Runnable
+
+            // Re-verify the active foreground window is genuinely the OEM Home desktop
+            val activeRoot = runCatching { rootInActiveWindow }.getOrNull()
+            val activePkg = activeRoot?.packageName?.toString().orEmpty()
+            if (activePkg == packageName || activePkg !in oemHomePackages) {
+                return@Runnable
+            }
+            if (hasRecentsMarkersInWindowTree(activeRoot)) {
+                suppressHomeRedirectUntilMs = maxOf(suppressHomeRedirectUntilMs, now + RECENTS_HOME_SUPPRESS_MS)
+                if (forceRecentsOverride && now - lastRecentsRedirectMs > 650L) {
+                    lastRecentsRedirectMs = now
+                    launchKansoRecents()
+                }
+                return@Runnable
+            }
+
+            // Ensure SystemUI shade/keyguard isn't focused above OEM launcher
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+            if (km?.isKeyguardLocked == true) return@Runnable
+
+            lastHomeRedirectMs = now
+            val homeIntent = Intent(this, LauncherActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                )
+            }
+            runCatching { startActivity(homeIntent) }
+        }
+        pendingHomeRedirectRunnable = runnable
+        mainHandler.postDelayed(runnable, HOME_REDIRECT_DEBOUNCE_MS)
+    }
+
+    private fun cancelPendingHomeRedirect() {
+        pendingHomeRedirectRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingHomeRedirectRunnable = null
+    }
+
+    private fun isStockRecentsWindow(pkg: String, cls: String, event: AccessibilityEvent): Boolean {
         if (pkg !in systemUiRecentsPackages) return false
-        val lower = cls.lowercase()
-        return lower.contains("recents") ||
-            lower.contains("overview") ||
-            lower.contains("taskview") ||
-            lower.contains("taskswitcher") ||
-            lower.contains("multitask")
+
+        val lowerCls = cls.lowercase(Locale.ROOT)
+        if (recentsClassKeywords.any { lowerCls.contains(it) }) {
+            return true
+        }
+
+        // Check event text & contentDescription for Recents / Overview markers
+        val eventTexts = buildList {
+            event.contentDescription?.toString()?.let { add(it) }
+            event.text?.forEach { cs -> cs?.toString()?.let { add(it) } }
+        }
+        if (eventTexts.any { txt ->
+                val lower = txt.lowercase(Locale.ROOT)
+                recentsTextMarkers.any { lower.contains(it) }
+            }
+        ) {
+            return true
+        }
+
+        // Check interactive window titles
+        val interactiveWindows = runCatching { windows }.getOrNull().orEmpty()
+        for (win in interactiveWindows) {
+            val title = win.title?.toString()?.lowercase(Locale.ROOT).orEmpty()
+            if (title.isNotBlank() && recentsTextMarkers.any { title.contains(it) }) {
+                return true
+            }
+        }
+
+        // Inspect active window node tree for OEM recents controls (clear-all button, RAM bar, recents view IDs)
+        val root = runCatching { rootInActiveWindow }.getOrNull()
+        if (root != null && root.packageName?.toString() == pkg && hasRecentsMarkersInWindowTree(root)) {
+            return true
+        }
+
+        return false
+    }
+
+    private fun hasRecentsMarkersInWindowTree(root: AccessibilityNodeInfo?): Boolean {
+        if (root == null) return false
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        val maxNodes = 48
+
+        while (queue.isNotEmpty() && visited < maxNodes) {
+            val node = queue.removeFirst()
+            visited++
+
+            val viewId = node.viewIdResourceName?.lowercase(Locale.ROOT).orEmpty()
+            if (viewId.isNotBlank() && recentsViewIdMarkers.any { viewId.contains(it) }) {
+                return true
+            }
+
+            val text = node.text?.toString()?.lowercase(Locale.ROOT).orEmpty()
+            val desc = node.contentDescription?.toString()?.lowercase(Locale.ROOT).orEmpty()
+            if ((text.isNotBlank() && recentsTextMarkers.any { text.contains(it) }) ||
+                (desc.isNotBlank() && recentsTextMarkers.any { desc.contains(it) })
+            ) {
+                return true
+            }
+
+            val childCount = node.childCount.coerceAtMost(12)
+            for (i in 0 until childCount) {
+                node.getChild(i)?.let { queue.addLast(it) }
+            }
+        }
+        return false
+    }
+
+    private fun isAssistedForceStopActive(now: Long): Boolean {
+        if (assistedForceStopPkg == null) return false
+        if (now > assistedForceStopUntilMs) {
+            assistedForceStopPkg = null
+            assistedForceStopClickedPrimary = false
+            return false
+        }
+        return true
+    }
+
+    private fun handleAssistedForceStopStep(now: Long) {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return
+        val targets = if (assistedForceStopClickedPrimary) forceStopConfirmLabels else forceStopPrimaryLabels
+        val match = findClickableNodeByLabels(root, targets) ?: return
+
+        if (match.isEnabled) {
+            val clicked = runCatching { match.performAction(AccessibilityNodeInfo.ACTION_CLICK) }.getOrDefault(false)
+            if (clicked) {
+                if (!assistedForceStopClickedPrimary) {
+                    assistedForceStopClickedPrimary = true
+                    assistedForceStopUntilMs = now + 4500L
+                } else {
+                    // Confirmation clicked — finish assisted cycle cleanly
+                    assistedForceStopPkg = null
+                    assistedForceStopClickedPrimary = false
+                    assistedForceStopUntilMs = 0L
+                }
+            }
+        }
+    }
+
+    private fun findClickableNodeByLabels(
+        root: AccessibilityNodeInfo,
+        labels: List<String>
+    ): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        val maxNodes = 80
+
+        while (queue.isNotEmpty() && visited < maxNodes) {
+            val node = queue.removeFirst()
+            visited++
+
+            val text = node.text?.toString()?.trim()?.lowercase(Locale.ROOT).orEmpty()
+            val desc = node.contentDescription?.toString()?.trim()?.lowercase(Locale.ROOT).orEmpty()
+            val matched = labels.any { lbl ->
+                text == lbl || desc == lbl ||
+                    (lbl.length >= 4 && (text.contains(lbl) || desc.contains(lbl)))
+            }
+            if (matched) {
+                val clickable = findClickableAncestorOrSelf(node)
+                if (clickable != null && clickable.isEnabled) {
+                    return clickable
+                }
+            }
+
+            val count = node.childCount.coerceAtMost(16)
+            for (i in 0 until count) {
+                node.getChild(i)?.let { queue.addLast(it) }
+            }
+        }
+        return null
+    }
+
+    private fun findClickableAncestorOrSelf(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        var depth = 0
+        while (current != null && depth < 4) {
+            if (current.isClickable) return current
+            current = current.parent
+            depth++
+        }
+        return null
     }
 
     private fun isKeyguardWindow(pkg: String, cls: String): Boolean {
         if (pkg != "com.android.systemui") return false
-        val lower = cls.lowercase()
+        val lower = cls.lowercase(Locale.ROOT)
         if (lower.contains("keyguard") || lower.contains("lockscreen") || lower.contains("bouncer")) {
             return true
         }
@@ -202,6 +531,10 @@ class KansoAccessibilityService : AccessibilityService() {
     }
 
     private fun launchKansoRecents() {
+        suppressHomeRedirectUntilMs = maxOf(
+            suppressHomeRedirectUntilMs,
+            System.currentTimeMillis() + RECENTS_HOME_SUPPRESS_MS
+        )
         val intent = Intent(this, RecentsActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -249,6 +582,7 @@ class KansoAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onUnbind(intent: Intent?): Boolean {
+        cancelPendingHomeRedirect()
         if (instance === this) instance = null
         _isRunning.value = false
         serviceScope.cancel()
@@ -256,6 +590,7 @@ class KansoAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        cancelPendingHomeRedirect()
         if (instance === this) instance = null
         _isRunning.value = false
         serviceScope.cancel()

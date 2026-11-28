@@ -14,8 +14,6 @@
     <string name="media_hud_fallback_subtitle">Tap to play</string>
     <string name="battery_unit_tag">PWR // CELL</string>
     <string name="humidity_label">HUMIDITY %1$d%%</string>
-    <string name="apps_installed_label">%1$d Apps Installed</string>
-    <string name="ram_free_label">RAM: %1$s Free</string>
     <string name="swipe_up_to_unlock">Swipe up to unlock</string>
     <string name="discover_search_hint">Search apps or web…</string>
 

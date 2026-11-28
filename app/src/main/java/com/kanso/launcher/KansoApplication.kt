@@ -8,7 +8,6 @@ import com.kanso.launcher.data.iconpacks.IconPackManager
 import com.kanso.launcher.data.prefs.KansoPreferences
 import com.kanso.launcher.data.telemetry.TelemetryRepository
 import com.kanso.launcher.data.weather.WeatherRepository
-import com.kanso.launcher.service.KansoLifecycleService
 import com.kanso.launcher.service.KansoPerformanceGovernor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +43,6 @@ class KansoApplication : Application() {
         audioVisualizerEngine = AudioVisualizerEngine(this, appScope)
 
         KansoPerformanceGovernor.start(this)
-        KansoLifecycleService.start(this)
     }
 
     override fun onTerminate() {

@@ -66,17 +66,13 @@ class WeatherRepository(
             try {
                 if (conn.responseCode in 200..299) {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    val root = JSONObject(body)
-                    val cur = root.getJSONObject("current")
-                    CachedWeather(
-                        cityName = city,
-                        latitude = lat,
-                        longitude = lon,
-                        temperatureC = cur.optDouble("temperature_2m", current.temperatureC.toDouble()).roundToInt(),
-                        humidityPercent = cur.optInt("relative_humidity_2m", current.humidityPercent),
-                        weatherCode = cur.optInt("weather_code", current.weatherCode),
-                        updatedAtMs = now,
-                        isUsingAutoLocation = current.isUsingAutoLocation
+                    parseCurrentWeatherJson(
+                        body = body,
+                        city = city,
+                        lat = lat,
+                        lon = lon,
+                        nowMs = now,
+                        fallback = current
                     )
                 } else {
                     current
@@ -104,20 +100,48 @@ class WeatherRepository(
             try {
                 if (conn.responseCode !in 200..299) return@withContext emptyList()
                 val body = conn.inputStream.bufferedReader().use { it.readText() }
-                val results = JSONObject(body).optJSONArray("results") ?: return@withContext emptyList()
-                List(results.length()) { idx ->
-                    val obj = results.getJSONObject(idx)
-                    CityOption(
-                        name = obj.optString("name", trimmed),
-                        country = obj.optString("country", ""),
-                        latitude = obj.optDouble("latitude", 0.0),
-                        longitude = obj.optDouble("longitude", 0.0)
-                    )
-                }
+                parseCitySearchJson(body, trimmed)
             } finally {
                 conn.disconnect()
             }
         }.getOrDefault(emptyList())
+    }
+
+    companion object {
+        internal fun parseCurrentWeatherJson(
+            body: String,
+            city: String,
+            lat: Double,
+            lon: Double,
+            nowMs: Long,
+            fallback: CachedWeather
+        ): CachedWeather {
+            val root = JSONObject(body)
+            val cur = root.getJSONObject("current")
+            return CachedWeather(
+                cityName = city,
+                latitude = lat,
+                longitude = lon,
+                temperatureC = cur.optDouble("temperature_2m", fallback.temperatureC.toDouble()).roundToInt(),
+                humidityPercent = cur.optInt("relative_humidity_2m", fallback.humidityPercent),
+                weatherCode = cur.optInt("weather_code", fallback.weatherCode),
+                updatedAtMs = nowMs,
+                isUsingAutoLocation = fallback.isUsingAutoLocation
+            )
+        }
+
+        internal fun parseCitySearchJson(body: String, fallbackName: String): List<CityOption> {
+            val results = JSONObject(body).optJSONArray("results") ?: return emptyList()
+            return List(results.length()) { idx ->
+                val obj = results.getJSONObject(idx)
+                CityOption(
+                    name = obj.optString("name", fallbackName),
+                    country = obj.optString("country", ""),
+                    latitude = obj.optDouble("latitude", 0.0),
+                    longitude = obj.optDouble("longitude", 0.0)
+                )
+            }
+        }
     }
 
     suspend fun setManualCity(option: CityOption): CachedWeather {

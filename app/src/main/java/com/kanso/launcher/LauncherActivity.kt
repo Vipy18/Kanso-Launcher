@@ -27,11 +27,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kanso.launcher.data.db.SurfacePage
 import com.kanso.launcher.data.prefs.ThemeMode
+import com.kanso.launcher.service.KansoLifecycleService
 import com.kanso.launcher.ui.LauncherViewModel
 import com.kanso.launcher.ui.drawer.AppDrawerScreen
 import com.kanso.launcher.ui.home.HomeScreen
 import com.kanso.launcher.ui.settings.SettingsScreen
 import com.kanso.launcher.ui.theme.KansoTheme
+import com.kanso.launcher.ui.widgets.WidgetMatrixScreen
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -42,6 +44,9 @@ data object DrawerRoute
 
 @Serializable
 data object SettingsRoute
+
+@Serializable
+data object WidgetMatrixRoute
 
 class LauncherActivity : ComponentActivity() {
 
@@ -180,6 +185,31 @@ class LauncherActivity : ComponentActivity() {
                     ) {
                         SettingsScreen(
                             viewModel = viewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onOpenWidgetMatrix = {
+                                navController.navigate(WidgetMatrixRoute) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    }
+
+                    composable<WidgetMatrixRoute>(
+                        enterTransition = {
+                            slideIntoContainer(
+                                AnimatedContentTransitionScope.SlideDirection.Start,
+                                animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                            ) + fadeIn()
+                        },
+                        exitTransition = {
+                            slideOutOfContainer(
+                                AnimatedContentTransitionScope.SlideDirection.End,
+                                animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                            ) + fadeOut()
+                        }
+                    ) {
+                        WidgetMatrixScreen(
+                            viewModel = viewModel,
                             onNavigateBack = { navController.popBackStack() }
                         )
                     }
@@ -191,6 +221,7 @@ class LauncherActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         runCatching { appWidgetHost.startListening() }
+        KansoLifecycleService.start(this)
         viewModel.refreshPermissions()
     }
 
@@ -222,7 +253,16 @@ class LauncherActivity : ComponentActivity() {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
             }
-            bindWidgetLauncher.launch(bindIntent)
+            val launched = runCatching {
+                bindWidgetLauncher.launch(bindIntent)
+                true
+            }.getOrDefault(false)
+            if (!launched) {
+                runCatching { appWidgetHost.deleteAppWidgetId(widgetId) }
+                pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+                pendingWidgetInfo = null
+                pendingWidgetPageIndex = SurfacePage.WORKSPACE
+            }
         }
     }
 }

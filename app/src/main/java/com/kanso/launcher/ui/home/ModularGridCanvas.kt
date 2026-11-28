@@ -82,7 +82,10 @@ import com.kanso.launcher.ui.widgets.KansoAppIcon
 import com.kanso.launcher.ui.widgets.MediaHudWidget
 import com.kanso.launcher.ui.widgets.ModularToggleSwitchWidget
 import com.kanso.launcher.ui.widgets.NetworkTelemetryWidget
+import com.kanso.launcher.ui.widgets.DualSliderCapsuleWidget
 import com.kanso.launcher.ui.widgets.QuickToggleClusterWidget
+import com.kanso.launcher.ui.widgets.StitchClockWidget
+import com.kanso.launcher.ui.widgets.TriStateRingerWidget
 import com.kanso.launcher.ui.widgets.WeatherBadgeWidget
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -127,6 +130,10 @@ fun ModularGridCanvas(
     onMoveItemToCell: (HomeItemEntity, Int, Int) -> Unit,
     onConfigureItem: (HomeItemEntity) -> Unit,
     onRemoveItem: (HomeItemEntity) -> Unit,
+    onSelectRingerMode: (Int) -> Unit = {},
+    onSetBrightness: (Float) -> Unit = {},
+    onSetVolume: (Float) -> Unit = {},
+    use24HourClock: Boolean = true,
     contentTopPadding: Dp = 0.dp,
     contentBottomPadding: Dp = 44.dp,
     horizontalContentInset: Dp = 0.dp,
@@ -369,6 +376,10 @@ fun ModularGridCanvas(
                         onRequestMediaPermission = onRequestMediaPermission,
                         onWeatherClick = onWeatherClick,
                         onCalendarClick = onCalendarClick,
+                        onSelectRingerMode = onSelectRingerMode,
+                        onSetBrightness = onSetBrightness,
+                        onSetVolume = onSetVolume,
+                        use24HourClock = use24HourClock,
                         onRemoveItem = { onRemoveItem(item) }
                     )
 
@@ -479,6 +490,10 @@ private fun ModularGridItemContent(
     onRequestMediaPermission: () -> Unit,
     onWeatherClick: () -> Unit,
     onCalendarClick: () -> Unit,
+    onSelectRingerMode: (Int) -> Unit,
+    onSetBrightness: (Float) -> Unit,
+    onSetVolume: (Float) -> Unit,
+    use24HourClock: Boolean,
     onRemoveItem: () -> Unit
 ) {
     val colors = LocalKansoColors.current
@@ -634,6 +649,47 @@ private fun ModularGridItemContent(
                     onOpenBluetooth = {
                         if (isEditMode) onSelectInEditMode() else onExecuteAction(KansoActionId.BLUETOOTH, "", "")
                     }
+                )
+            }
+        }
+
+        HomeItemType.TRI_STATE_SWITCH -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                TriStateRingerWidget(
+                    ringerMode = telemetry.ringerMode,
+                    mechaTheme = config.mechaTheme,
+                    onSelectRingerMode = { mode ->
+                        if (isEditMode) onSelectInEditMode() else onSelectRingerMode(mode)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        HomeItemType.DUAL_SLIDER_CAPSULE -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                DualSliderCapsuleWidget(
+                    brightnessFraction = telemetry.brightnessFraction,
+                    volumeFraction = telemetry.mediaVolumeFraction,
+                    mechaTheme = config.mechaTheme,
+                    onBrightnessChange = { v -> if (!isEditMode) onSetBrightness(v) },
+                    onVolumeChange = { v -> if (!isEditMode) onSetVolume(v) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        HomeItemType.STITCH_CLOCK -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                StitchClockWidget(
+                    clock = telemetry.clock,
+                    use24Hour = use24HourClock,
+                    mechaTheme = config.mechaTheme,
+                    onClick = {
+                        if (isEditMode) onSelectInEditMode()
+                        else onExecuteAction(KansoActionId.OPEN_CLOCK, "", "")
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }

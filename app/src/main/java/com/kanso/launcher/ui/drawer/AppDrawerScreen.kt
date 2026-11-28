@@ -4,9 +4,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,12 +26,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -40,7 +44,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
@@ -82,13 +85,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kanso.launcher.R
+import com.kanso.launcher.data.apps.AppDrawerCategory
 import com.kanso.launcher.data.apps.InstalledApp
 import com.kanso.launcher.data.db.SurfacePage
 import com.kanso.launcher.data.iconpacks.IconPackInfo
 import com.kanso.launcher.data.iconpacks.IconPackManager
 import com.kanso.launcher.data.prefs.DrawerViewMode
 import com.kanso.launcher.ui.LauncherViewModel
-import com.kanso.launcher.ui.theme.ColorBlockHeaderBackdrop
 import com.kanso.launcher.ui.theme.JetBrainsMonoFontFamily
 import com.kanso.launcher.ui.theme.LocalKansoColors
 import com.kanso.launcher.ui.theme.SpaceGroteskFontFamily
@@ -116,24 +119,45 @@ fun AppDrawerScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
     val visibleApps by viewModel.visibleApps.collectAsStateWithLifecycle()
+    val recentPackages by viewModel.recentAppPackages.collectAsStateWithLifecycle()
     val overrides by viewModel.iconOverrides.collectAsStateWithLifecycle()
     val badges by viewModel.notificationBadges.collectAsStateWithLifecycle()
     val installedPacks by viewModel.installedIconPacks.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf(AppDrawerCategory.ALL) }
     var activeScrubLetter by remember { mutableStateOf<Char?>(null) }
     var contextMenuApp by remember { mutableStateOf<InstalledApp?>(null) }
     var iconPickerApp by remember { mutableStateOf<InstalledApp?>(null) }
     var pinToDockApp by remember { mutableStateOf<InstalledApp?>(null) }
     var headerDismissDrag by remember { mutableFloatStateOf(0f) }
 
-    val filteredApps by remember(visibleApps, searchQuery) {
+    val categoryCounts = remember(visibleApps) {
+        AppDrawerCategory.entries.associateWith { cat ->
+            if (cat == AppDrawerCategory.ALL) visibleApps.size
+            else visibleApps.count { it.category == cat }
+        }
+    }
+
+    val recentApps = remember(visibleApps, recentPackages) {
+        val byPkg = visibleApps.associateBy { it.packageName }
+        val resolved = recentPackages.mapNotNull { byPkg[it] }
+        if (resolved.isNotEmpty()) resolved.take(6) else visibleApps.take(6)
+    }
+
+    val filteredApps by remember(visibleApps, searchQuery, selectedCategory) {
         derivedStateOf {
+            val byCategory = if (selectedCategory == AppDrawerCategory.ALL) {
+                visibleApps
+            } else {
+                visibleApps.filter { it.category == selectedCategory }
+            }
             val q = searchQuery.trim()
-            if (q.isEmpty()) visibleApps
-            else visibleApps.filter {
+            if (q.isEmpty()) byCategory
+            else byCategory.filter {
                 it.label.contains(q, ignoreCase = true) ||
-                    it.packageName.contains(q, ignoreCase = true)
+                    it.packageName.contains(q, ignoreCase = true) ||
+                    it.subsystemTag.contains(q, ignoreCase = true)
             }
         }
     }
@@ -153,29 +177,22 @@ fun AppDrawerScreen(
     }
 
     val gridCols = settings.homeGridColumns.coerceIn(4, 5)
-    val gridIconSize = if (gridCols >= 5) 56.dp else 60.dp
+    val tileIconSize = if (gridCols >= 5) 36.dp else 42.dp
 
     Box(
         modifier = Modifier
+            .testTag("stitch_app_drawer")
             .fillMaxSize()
             .background(colors.canvasBg)
     ) {
-        // Matching curved accent top zone
-        ColorBlockHeaderBackdrop(
-            height = 148.dp,
-            leftDropFraction = 0.96f,
-            rightShelfFraction = 0.78f,
-            curveCenterXFraction = 0.62f
-        )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // Top Accent Header (Swipe down on header dismisses Drawer smoothly)
-            Row(
+            // Top HUD Status Line (Swipe down here dismisses Drawer)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .pointerInput(Unit) {
@@ -188,17 +205,93 @@ fun AppDrawerScreen(
                             }
                         )
                     }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.accent)
+                            )
+                            Text(
+                                text = "SYS_DRAWER // INDEX V4.2",
+                                color = colors.accent,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.5.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                        Text(
+                            text = "PACKAGES: ${visibleApps.size} / SYNCED • RAM ${telemetry.freeRamText} FREE",
+                            color = colors.inkSecondary,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontSize = 9.sp,
+                            letterSpacing = 0.6.sp
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .testTag("drawer_layout_toggle")
+                                .size(40.dp)
+                                .kansoNeumorphic(raised = true, cornerRadius = 13.dp)
+                                .kansoTactileClickable { viewModel.toggleDrawerViewMode() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (settings.drawerViewMode == DrawerViewMode.GRID) {
+                                    Icons.AutoMirrored.Rounded.ViewList
+                                } else {
+                                    Icons.Rounded.GridView
+                                },
+                                contentDescription = stringResource(R.string.cd_drawer_layout_toggle),
+                                tint = colors.inkPrimary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .testTag("drawer_settings_button")
+                                .size(40.dp)
+                                .kansoNeumorphic(raised = true, cornerRadius = 13.dp)
+                                .kansoTactileClickable(onClick = onOpenSettings),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Settings,
+                                contentDescription = stringResource(R.string.cd_open_settings),
+                                tint = colors.accent,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Recessed Tactical Search Dock
+                Row(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .height(48.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(colors.darkModuleBg.copy(alpha = 0.95f))
-                        .kansoMechaAccents(accentActive = searchQuery.isNotEmpty(), showCornerBrackets = true, showLedPip = false)
+                        .kansoNeumorphic(raised = false, cornerRadius = 16.dp, surfaceColor = colors.surfaceInset)
+                        .border(
+                            width = 1.dp,
+                            color = if (searchQuery.isNotEmpty()) colors.accent.copy(alpha = 0.65f) else colors.trackMuted.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(16.dp)
+                        )
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -206,15 +299,17 @@ fun AppDrawerScreen(
                         imageVector = Icons.Rounded.Search,
                         contentDescription = null,
                         tint = colors.accent,
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(modifier = Modifier.weight(1f)) {
                         if (searchQuery.isEmpty()) {
                             Text(
-                                text = stringResource(R.string.search_apps_hint),
-                                color = Color(0xFF9EA3AE),
-                                fontSize = 14.sp
+                                text = "FIND APPLICATION OR PACKAGE...",
+                                color = colors.inkSecondary.copy(alpha = 0.72f),
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = 10.5.sp,
+                                letterSpacing = 0.6.sp
                             )
                         }
                         BasicTextField(
@@ -222,9 +317,10 @@ fun AppDrawerScreen(
                             onValueChange = { searchQuery = it },
                             singleLine = true,
                             textStyle = TextStyle(
-                                color = Color(0xFFF2F3F5),
+                                color = colors.inkPrimary,
                                 fontFamily = SpaceGroteskFontFamily,
-                                fontSize = 14.sp
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
                             ),
                             cursorBrush = SolidColor(colors.accent),
                             modifier = Modifier
@@ -236,7 +332,7 @@ fun AppDrawerScreen(
                         Icon(
                             imageVector = Icons.Rounded.Close,
                             contentDescription = stringResource(R.string.cd_clear_search),
-                            tint = Color(0xFF9EA3AE),
+                            tint = colors.inkSecondary,
                             modifier = Modifier
                                 .size(18.dp)
                                 .clickable { searchQuery = "" }
@@ -244,96 +340,130 @@ fun AppDrawerScreen(
                     }
                 }
 
-                // Grid / List layout toggle
-                Box(
+                // Category Filter Chips
+                Row(
                     modifier = Modifier
-                        .testTag("drawer_layout_toggle")
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(colors.darkModuleBg.copy(alpha = 0.95f))
-                        .kansoTactileClickable { viewModel.toggleDrawerViewMode() },
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    Icon(
-                        imageVector = if (settings.drawerViewMode == DrawerViewMode.GRID) {
-                            Icons.AutoMirrored.Rounded.ViewList
-                        } else {
-                            Icons.Rounded.GridView
-                        },
-                        contentDescription = stringResource(R.string.cd_drawer_layout_toggle),
-                        tint = Color(0xFFF2F3F5),
-                        modifier = Modifier.size(21.dp)
-                    )
-                }
-
-                // Settings gear button
-                Box(
-                    modifier = Modifier
-                        .testTag("drawer_settings_button")
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(colors.darkModuleBg.copy(alpha = 0.95f))
-                        .kansoTactileClickable(onClick = onOpenSettings),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Settings,
-                        contentDescription = stringResource(R.string.cd_open_settings),
-                        tint = colors.accent,
-                        modifier = Modifier.size(21.dp)
-                    )
+                    AppDrawerCategory.entries.forEach { cat ->
+                        val count = categoryCounts[cat] ?: 0
+                        val selected = selectedCategory == cat
+                        Row(
+                            modifier = Modifier
+                                .testTag("drawer_cat_${cat.name.lowercase()}")
+                                .clip(CircleShape)
+                                .background(if (selected) colors.accent else colors.surfaceRaised)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (selected) colors.accent else colors.trackMuted.copy(alpha = 0.45f),
+                                    shape = CircleShape
+                                )
+                                .kansoTactileClickable { selectedCategory = cat }
+                                .padding(horizontal = 11.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = cat.label,
+                                color = if (selected) colors.onAccent else colors.inkPrimary,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.5.sp,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "$count",
+                                color = if (selected) colors.onAccent.copy(alpha = 0.78f) else colors.inkSecondary,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = 8.5.sp
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Live Micro-Telemetry Strip
-            Row(
-                modifier = Modifier
-                    .testTag("drawer_telemetry_strip")
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // RECENTLY OPENED // LRU_CACHE Carousel (shown when not searching)
+            if (searchQuery.isBlank() && recentApps.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(colors.accent)
-                    )
                     Text(
-                        text = stringResource(R.string.apps_installed_label, visibleApps.size),
-                        color = colors.inkPrimary,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Memory,
-                        contentDescription = null,
-                        tint = colors.inkSecondary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.ram_free_label, telemetry.freeRamText),
+                        text = "RECENTLY OPENED // LRU_CACHE",
                         color = colors.inkSecondary,
                         fontFamily = JetBrainsMonoFontFamily,
-                        fontSize = 11.sp
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 8.5.sp,
+                        letterSpacing = 0.9.sp,
+                        modifier = Modifier.padding(horizontal = 18.dp)
                     )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(recentApps, key = { "lru_${it.componentKey}" }) { app ->
+                            val badge = badges[app.packageName] ?: 0
+                            Row(
+                                modifier = Modifier
+                                    .testTag("drawer_recent_${app.packageName}")
+                                    .kansoNeumorphic(raised = true, cornerRadius = 16.dp)
+                                    .combinedClickable(
+                                        onClick = { viewModel.appRepository.launchApp(app.packageName, app.activityName) },
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            contextMenuApp = app
+                                        }
+                                    )
+                                    .padding(start = 7.dp, end = 11.dp, top = 6.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .kansoNeumorphic(raised = false, cornerRadius = 10.dp, surfaceColor = colors.surfaceInset),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    KansoAppIcon(
+                                        packageName = app.packageName,
+                                        activityName = app.activityName,
+                                        contentDescription = app.label,
+                                        iconPackManager = viewModel.iconPackManager,
+                                        iconPackMode = settings.iconPackMode,
+                                        selectedIconPackPackage = settings.selectedIconPackPackage,
+                                        iconOverride = overrides[app.componentKey],
+                                        iconSize = 24.dp,
+                                        cornerRadius = 7.dp
+                                    )
+                                }
+                                Text(
+                                    text = app.label,
+                                    color = colors.inkPrimary,
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (badge > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(colors.accent)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            // Main Drawer Content + Right-Edge A-Z Scrubber Rail
+            // Main Drawer Matrix + Right-Edge Recessed A-Z Scrubber Rail
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -345,28 +475,31 @@ fun AppDrawerScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (searchQuery.isBlank()) "No launchable apps found" else "No apps matching \"$searchQuery\"",
+                            text = if (searchQuery.isBlank()) "NO APPS IN ${selectedCategory.label}" else "NO APPS MATCHING \"$searchQuery\"",
                             color = colors.inkSecondary,
-                            fontSize = 14.sp
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontSize = 11.sp
                         )
                     }
                 } else if (settings.drawerViewMode == DrawerViewMode.GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(gridCols),
                         state = gridState,
-                        contentPadding = PaddingValues(start = 14.dp, end = 34.dp, top = 8.dp, bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(if (gridCols >= 5) 8.dp else 12.dp),
+                        contentPadding = PaddingValues(start = 14.dp, end = 36.dp, top = 4.dp, bottom = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .testTag("drawer_apps_grid")
                             .fillMaxSize()
                     ) {
                         items(filteredApps, key = { it.componentKey }) { app ->
+                            val badge = badges[app.packageName] ?: 0
+                            // Stitch Raised Tactile Rounded-Square Tile with Recessed Dark Icon Well
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .testTag("drawer_app_${app.packageName}")
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .kansoNeumorphic(raised = true, cornerRadius = 20.dp)
                                     .combinedClickable(
                                         onClick = {
                                             viewModel.appRepository.launchApp(app.packageName, app.activityName)
@@ -376,29 +509,80 @@ fun AppDrawerScreen(
                                             contextMenuApp = app
                                         }
                                     )
-                                    .padding(vertical = 2.dp)
+                                    .padding(horizontal = 6.dp, vertical = 9.dp)
                             ) {
-                                KansoAppIcon(
-                                    packageName = app.packageName,
-                                    activityName = app.activityName,
-                                    contentDescription = app.label,
-                                    iconPackManager = viewModel.iconPackManager,
-                                    iconPackMode = settings.iconPackMode,
-                                    selectedIconPackPackage = settings.selectedIconPackPackage,
-                                    iconOverride = overrides[app.componentKey],
-                                    badgeCount = badges[app.packageName] ?: 0,
-                                    iconSize = gridIconSize,
-                                    cornerRadius = 16.dp
-                                )
-                                Spacer(modifier = Modifier.height(5.dp))
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    // Recessed Dark Tactile Well framing the real Android App Icon
+                                    Box(
+                                        modifier = Modifier
+                                            .size(tileIconSize + 12.dp)
+                                            .kansoNeumorphic(
+                                                raised = false,
+                                                cornerRadius = 14.dp,
+                                                surfaceColor = colors.surfaceInset
+                                            )
+                                            .border(
+                                                width = 0.8.dp,
+                                                color = if (badge > 0) colors.accent.copy(alpha = 0.5f) else colors.trackMuted.copy(alpha = 0.35f),
+                                                shape = RoundedCornerShape(14.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        KansoAppIcon(
+                                            packageName = app.packageName,
+                                            activityName = app.activityName,
+                                            contentDescription = app.label,
+                                            iconPackManager = viewModel.iconPackManager,
+                                            iconPackMode = settings.iconPackMode,
+                                            selectedIconPackPackage = settings.selectedIconPackPackage,
+                                            iconOverride = overrides[app.componentKey],
+                                            badgeCount = 0,
+                                            iconSize = tileIconSize,
+                                            cornerRadius = 10.dp
+                                        )
+                                    }
+
+                                    if (badge > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .clip(CircleShape)
+                                                .background(colors.accent)
+                                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = if (badge > 99) "99+" else "$badge",
+                                                color = colors.onAccent,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 7.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
                                 Text(
                                     text = app.label,
                                     color = colors.inkPrimary,
                                     fontFamily = SpaceGroteskFontFamily,
-                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 10.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = app.subsystemTag,
+                                    color = colors.inkSecondary.copy(alpha = 0.72f),
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 7.5.sp,
+                                    letterSpacing = 0.5.sp
                                 )
                             }
                         }
@@ -406,13 +590,14 @@ fun AppDrawerScreen(
                 } else {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(start = 16.dp, end = 36.dp, top = 8.dp, bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 38.dp, top = 4.dp, bottom = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
                         modifier = Modifier
                             .testTag("drawer_apps_list")
                             .fillMaxSize()
                     ) {
                         items(filteredApps, key = { it.componentKey }) { app ->
+                            val badge = badges[app.packageName] ?: 0
                             Row(
                                 modifier = Modifier
                                     .testTag("drawer_app_${app.packageName}")
@@ -430,18 +615,25 @@ fun AppDrawerScreen(
                                     .padding(horizontal = 12.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                KansoAppIcon(
-                                    packageName = app.packageName,
-                                    activityName = app.activityName,
-                                    contentDescription = app.label,
-                                    iconPackManager = viewModel.iconPackManager,
-                                    iconPackMode = settings.iconPackMode,
-                                    selectedIconPackPackage = settings.selectedIconPackPackage,
-                                    iconOverride = overrides[app.componentKey],
-                                    badgeCount = badges[app.packageName] ?: 0,
-                                    iconSize = 46.dp,
-                                    cornerRadius = 12.dp
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .kansoNeumorphic(raised = false, cornerRadius = 13.dp, surfaceColor = colors.surfaceInset),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    KansoAppIcon(
+                                        packageName = app.packageName,
+                                        activityName = app.activityName,
+                                        contentDescription = app.label,
+                                        iconPackManager = viewModel.iconPackManager,
+                                        iconPackMode = settings.iconPackMode,
+                                        selectedIconPackPackage = settings.selectedIconPackPackage,
+                                        iconOverride = overrides[app.componentKey],
+                                        badgeCount = badge,
+                                        iconSize = 36.dp,
+                                        cornerRadius = 9.dp
+                                    )
+                                }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
@@ -454,10 +646,10 @@ fun AppDrawerScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = app.packageName,
+                                        text = "${app.subsystemTag} // ${app.packageName}",
                                         color = colors.inkSecondary,
                                         fontFamily = JetBrainsMonoFontFamily,
-                                        fontSize = 10.5.sp,
+                                        fontSize = 9.5.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -467,7 +659,7 @@ fun AppDrawerScreen(
                     }
                 }
 
-                // Right-edge Vertical A-Z Scrubber Rail
+                // Right-edge Recessed Vertical A-Z Scrubber Rail
                 AlphabetScrubberRail(
                     highlightedLetter = activeScrubLetter ?: firstVisibleLetter,
                     onLetterSelected = { letter ->
@@ -488,10 +680,10 @@ fun AppDrawerScreen(
                     onScrubEnd = { activeScrubLetter = null },
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = 4.dp, top = 6.dp, bottom = 12.dp)
+                        .padding(end = 4.dp, top = 4.dp, bottom = 10.dp)
                 )
 
-                // Floating Accent Letter Bubble while scrubbing
+                // Glowing Signal Amber Letter Bubble while scrubbing
                 activeScrubLetter?.let { letter ->
                     Box(
                         modifier = Modifier
@@ -513,10 +705,36 @@ fun AppDrawerScreen(
                     }
                 }
             }
+
+            // Bottom Recessed Drag Handle & Live Package Readout
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .kansoTactileClickable(onClick = onClose)
+                    .padding(top = 4.dp, bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(48.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                        .background(colors.inkSecondary.copy(alpha = 0.42f))
+                )
+                Text(
+                    text = "DRAWER // ${filteredApps.size} VISIBLE // ${visibleApps.size} PACKAGES INDEXED",
+                    color = colors.inkSecondary.copy(alpha = 0.78f),
+                    fontFamily = JetBrainsMonoFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 8.5.sp,
+                    letterSpacing = 0.9.sp
+                )
+            }
         }
     }
 
-    // Long-Press App Context Sheet
+    // Long-Press App Context Sheet (100% existing actions preserved)
     contextMenuApp?.let { app ->
         ModalBottomSheet(
             onDismissRequest = { contextMenuApp = null },
@@ -537,7 +755,7 @@ fun AppDrawerScreen(
                     fontSize = 18.sp
                 )
                 Text(
-                    text = app.packageName,
+                    text = "${app.subsystemTag} // ${app.packageName}",
                     color = colors.inkSecondary,
                     fontFamily = JetBrainsMonoFontFamily,
                     fontSize = 11.sp
@@ -691,6 +909,8 @@ private fun AlphabetScrubberRail(
             .testTag("drawer_az_scrubber")
             .width(24.dp)
             .fillMaxHeight()
+            .kansoNeumorphic(raised = false, cornerRadius = 12.dp, surfaceColor = colors.surfaceInset)
+            .padding(vertical = 6.dp)
             .onSizeChanged { railHeightPx = it.height.coerceAtLeast(1) }
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
@@ -705,14 +925,22 @@ private fun AlphabetScrubberRail(
     ) {
         ALPHABET.forEach { ch ->
             val isHighlighted = ch == highlightedLetter
-            Text(
-                text = ch.toString(),
-                color = if (isHighlighted) colors.accent else colors.inkSecondary.copy(alpha = 0.72f),
-                fontFamily = JetBrainsMonoFontFamily,
-                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
-                fontSize = if (isHighlighted) 10.sp else 8.5.sp,
-                modifier = Modifier.clickable { onLetterSelected(ch) }
-            )
+            Box(
+                modifier = Modifier
+                    .size(width = 18.dp, height = 13.dp)
+                    .clip(CircleShape)
+                    .background(if (isHighlighted) colors.accent else Color.Transparent)
+                    .clickable { onLetterSelected(ch) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = ch.toString(),
+                    color = if (isHighlighted) colors.onAccent else colors.inkSecondary.copy(alpha = 0.72f),
+                    fontFamily = JetBrainsMonoFontFamily,
+                    fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 8.sp
+                )
+            }
         }
     }
 }

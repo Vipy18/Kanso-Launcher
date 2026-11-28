@@ -87,7 +87,7 @@ fun statusLabelForAction(
     KansoActionId.WIFI -> if (telemetry.isWifiConnected) "ON" else "OFF"
     KansoActionId.MOBILE_DATA -> if (telemetry.isMobileConnected) "LIVE" else "OFF"
     KansoActionId.BLUETOOTH -> if (telemetry.isBluetoothEnabled) "ON" else "OFF"
-    KansoActionId.HOTSPOT -> "OPEN"
+    KansoActionId.HOTSPOT -> if (telemetry.isHotspotEnabled) "ON" else "OFF"
     KansoActionId.AIRPLANE -> if (telemetry.isAirplaneModeEnabled) "ON" else "OFF"
     KansoActionId.DND -> if (telemetry.isDndEnabled) "ON" else "OFF"
     KansoActionId.TORCH -> if (telemetry.isTorchEnabled) "ON" else "OFF"

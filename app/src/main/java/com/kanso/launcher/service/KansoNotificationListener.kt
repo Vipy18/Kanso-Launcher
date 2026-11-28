@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -51,6 +53,7 @@ class KansoNotificationListener : NotificationListenerService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var mediaSessionManager: MediaSessionManager? = null
+    private val controllerLock = Any()
     private val trackedControllers = mutableListOf<MediaController>()
     private val controllerCallbacks = mutableMapOf<MediaController, MediaController.Callback>()
     private var lastArtUri: String? = null
@@ -152,7 +155,8 @@ class KansoNotificationListener : NotificationListenerService() {
         val component = ComponentName(this, KansoNotificationListener::class.java)
         runCatching {
             val active = msm.getActiveSessions(component)
-            if (active.size != trackedControllers.size) {
+            val trackedSize = synchronized(controllerLock) { trackedControllers.size }
+            if (active.size != trackedSize) {
                 bindAllControllers(active)
             } else {
                 publishBestController()
@@ -167,11 +171,15 @@ class KansoNotificationListener : NotificationListenerService() {
     }
 
     private fun clearTrackedControllers() {
-        controllerCallbacks.forEach { (controller, cb) ->
+        val snapshot = synchronized(controllerLock) {
+            val entries = controllerCallbacks.entries.map { it.key to it.value }
+            controllerCallbacks.clear()
+            trackedControllers.clear()
+            entries
+        }
+        snapshot.forEach { (controller, cb) ->
             runCatching { controller.unregisterCallback(cb) }
         }
-        controllerCallbacks.clear()
-        trackedControllers.clear()
     }
 
     /**
@@ -180,32 +188,42 @@ class KansoNotificationListener : NotificationListenerService() {
      */
     private fun bindAllControllers(controllers: List<MediaController>) {
         clearTrackedControllers()
-        trackedControllers.addAll(controllers)
-        controllers.forEach { controller ->
-            val cb = object : MediaController.Callback() {
-                override fun onPlaybackStateChanged(state: PlaybackState?) {
-                    publishBestController()
-                }
+        val pairs = mutableListOf<Pair<MediaController, MediaController.Callback>>()
+        synchronized(controllerLock) {
+            trackedControllers.addAll(controllers)
+            controllers.forEach { controller ->
+                val cb = object : MediaController.Callback() {
+                    override fun onPlaybackStateChanged(state: PlaybackState?) {
+                        publishBestController()
+                    }
 
-                override fun onMetadataChanged(metadata: MediaMetadata?) {
-                    publishBestController()
-                }
+                    override fun onMetadataChanged(metadata: MediaMetadata?) {
+                        publishBestController()
+                    }
 
-                override fun onSessionDestroyed() {
-                    trackedControllers.remove(controller)
-                    publishBestController()
+                    override fun onSessionDestroyed() {
+                        synchronized(controllerLock) {
+                            trackedControllers.remove(controller)
+                            controllerCallbacks.remove(controller)
+                        }
+                        publishBestController()
+                    }
                 }
+                controllerCallbacks[controller] = cb
+                pairs.add(controller to cb)
             }
-            controllerCallbacks[controller] = cb
+        }
+        pairs.forEach { (controller, cb) ->
             runCatching { controller.registerCallback(cb) }
         }
         publishBestController()
     }
 
     private fun publishBestController() {
-        val chosen = trackedControllers.firstOrNull { isActivelyPlaying(it) }
-            ?: trackedControllers.firstOrNull { it.metadata != null }
-            ?: trackedControllers.firstOrNull()
+        val snapshot = synchronized(controllerLock) { trackedControllers.toList() }
+        val chosen = snapshot.firstOrNull { isActivelyPlaying(it) }
+            ?: snapshot.firstOrNull { it.metadata != null }
+            ?: snapshot.firstOrNull()
 
         currentControllerRef = chosen
         publishMediaFrom(chosen)
@@ -275,16 +293,45 @@ class KansoNotificationListener : NotificationListenerService() {
             }
             try {
                 if (conn.responseCode in 200..299) {
-                    conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                    conn.inputStream.use { decodeBoundedBitmap(it) }
                 } else null
             } finally {
                 conn.disconnect()
             }
         } else {
             val uri = uriStr.toUri()
-            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            contentResolver.openInputStream(uri)?.use { decodeBoundedBitmap(it) }
         }
     }.getOrNull()
+
+    private fun decodeBoundedBitmap(input: InputStream, targetPx: Int = 320, maxBytes: Int = 2 * 1024 * 1024): Bitmap? {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val n = input.read(buf)
+            if (n <= 0) break
+            total += n
+            if (total > maxBytes) return null
+            out.write(buf, 0, n)
+        }
+        val bytes = out.toByteArray()
+        if (bytes.isEmpty()) return null
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sampleSize = 1
+        while (bounds.outWidth / (sampleSize * 2) >= targetPx && bounds.outHeight / (sampleSize * 2) >= targetPx) {
+            sampleSize *= 2
+        }
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+    }
 
     companion object {
         @Volatile

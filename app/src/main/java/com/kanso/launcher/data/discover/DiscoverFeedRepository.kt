@@ -113,7 +113,7 @@ object DiscoverFeedRepository {
         }
     }
 
-    private fun parseRssXml(xml: String, defaultSource: String): List<DiscoverArticle> {
+    internal fun parseRssXml(xml: String, defaultSource: String): List<DiscoverArticle> {
         val parser = Xml.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(StringReader(xml))

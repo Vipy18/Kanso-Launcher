@@ -26,39 +26,75 @@ data class RomEnvironmentInfo(
 
 object RomDetector {
 
-    private val chineseBrands = setOf("honor", "huawei", "xiaomi", "redmi", "poco", "oppo", "vivo", "iqoo", "realme", "meizu")
+    private val chineseBrands = setOf(
+        "honor", "huawei", "xiaomi", "redmi", "poco",
+        "oppo", "oneplus", "realme", "vivo", "iqoo", "meizu"
+    )
 
     fun detect(): RomEnvironmentInfo {
-        val countryProp = getSystemProperty("ro.hw.country")?.lowercase(Locale.ROOT)
-        val regionProp = getSystemProperty("ro.product.locale.region")?.lowercase(Locale.ROOT)
-        val miuiRegion = getSystemProperty("ro.miui.region")?.lowercase(Locale.ROOT)
-        val localeProp = getSystemProperty("ro.product.locale")?.lowercase(Locale.ROOT)
-        val manufacturer = Build.MANUFACTURER.orEmpty()
-        val lowerBrand = manufacturer.lowercase(Locale.ROOT)
+        return classifyRom(
+            manufacturer = Build.MANUFACTURER.orEmpty(),
+            model = Build.MODEL.orEmpty(),
+            countryProp = getSystemProperty("ro.hw.country"),
+            regionProp = getSystemProperty("ro.product.locale.region"),
+            miuiRegion = getSystemProperty("ro.miui.region"),
+            localeProp = getSystemProperty("ro.product.locale"),
+            oplusRegion = getSystemProperty("ro.vendor.oplus.regionmark")
+                ?: getSystemProperty("persist.sys.oppo.region"),
+            vivoOverseas = getSystemProperty("ro.vivo.product.overseas")
+        )
+    }
 
-        val isChinaRegion = countryProp == "cn" ||
-            regionProp == "cn" ||
-            miuiRegion == "cn" ||
-            localeProp?.contains("zh-cn") == true ||
-            localeProp?.contains("zh_cn") == true
+    internal fun classifyRom(
+        manufacturer: String,
+        model: String,
+        countryProp: String? = null,
+        regionProp: String? = null,
+        miuiRegion: String? = null,
+        localeProp: String? = null,
+        oplusRegion: String? = null,
+        vivoOverseas: String? = null
+    ): RomEnvironmentInfo {
+        val lowerBrand = manufacturer.lowercase(Locale.ROOT)
+        val lowerCountry = countryProp?.lowercase(Locale.ROOT)
+        val lowerRegion = regionProp?.lowercase(Locale.ROOT)
+        val lowerMiui = miuiRegion?.lowercase(Locale.ROOT)
+        val lowerLocale = localeProp?.lowercase(Locale.ROOT)
+        val lowerOplus = oplusRegion?.lowercase(Locale.ROOT)
+        val lowerVivoOverseas = vivoOverseas?.lowercase(Locale.ROOT)
+
+        val isChinaRegion = lowerCountry == "cn" ||
+            lowerRegion == "cn" ||
+            lowerMiui == "cn" ||
+            lowerOplus == "cn" ||
+            lowerVivoOverseas == "no" ||
+            lowerLocale?.contains("zh-cn") == true ||
+            lowerLocale?.contains("zh_cn") == true
+
         val isChineseBrand = chineseBrands.any { lowerBrand.contains(it) }
         val isCnRom = isChinaRegion && isChineseBrand
 
+        val upperBrand = manufacturer.ifBlank { "ANDROID" }.uppercase(Locale.ROOT)
         val regionLabel = when {
-            isCnRom -> "CN OEM ROM (${manufacturer.uppercase(Locale.ROOT)})"
-            isChineseBrand -> "GLOBAL OEM (${manufacturer.uppercase(Locale.ROOT)})"
-            else -> "GLOBAL ANDROID (${manufacturer.uppercase(Locale.ROOT)})"
+            isCnRom -> "CN OEM ROM ($upperBrand)"
+            isChineseBrand -> "GLOBAL OEM ($upperBrand)"
+            else -> "GLOBAL ANDROID ($upperBrand)"
         }
 
         return RomEnvironmentInfo(
             manufacturer = manufacturer,
-            model = Build.MODEL.orEmpty(),
+            model = model,
             isChineseRom = isCnRom,
             regionLabel = regionLabel
         )
     }
 
     fun isChineseRom(): Boolean = detect().isChineseRom
+
+    fun isHonorOrHuawei(manufacturer: String = Build.MANUFACTURER.orEmpty()): Boolean {
+        val lower = manufacturer.lowercase(Locale.ROOT)
+        return lower.contains("honor") || lower.contains("huawei")
+    }
 
     @SuppressLint("PrivateApi")
     private fun getSystemProperty(key: String): String? {
@@ -161,5 +197,46 @@ object RomDetector {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         runCatching { context.startActivity(intent) }
+    }
+
+    fun openAppDetailsSettings(context: Context, packageName: String = context.packageName) {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            "package:$packageName".toUri()
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
+    }
+
+    /**
+     * Opens OEM App Launch / Auto-Start / Battery protection settings on Chinese ROMs
+     * (Honor MagicOS, Huawei HarmonyOS/EMUI, Xiaomi HyperOS/MIUI, OPPO ColorOS, Vivo OriginOS)
+     * so background power managers do not kill KansoAccessibilityService or KansoLifecycleService.
+     */
+    fun openOemBatteryAndLaunchSettings(context: Context) {
+        val candidates = listOf(
+            ComponentName("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+            ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.oplus.safecenter", "com.oplus.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"),
+            ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+        )
+        for (component in candidates) {
+            val intent = Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val resolved = context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            if (resolved != null && runCatching { context.startActivity(intent); true }.getOrDefault(false)) {
+                return
+            }
+        }
+        val batteryOptIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (!runCatching { context.startActivity(batteryOptIntent); true }.getOrDefault(false)) {
+            openAppDetailsSettings(context)
+        }
     }
 }

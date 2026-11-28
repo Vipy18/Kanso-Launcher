@@ -16,6 +16,9 @@ object HomeItemType {
     const val CALENDAR_RIBBON = "CALENDAR_RIBBON"
     const val QUICK_TOGGLE_CLUSTER = "QUICK_TOGGLE_CLUSTER"
     const val ACCENT_BLOCK = "ACCENT_BLOCK"
+    const val TRI_STATE_SWITCH = "TRI_STATE_SWITCH"
+    const val DUAL_SLIDER_CAPSULE = "DUAL_SLIDER_CAPSULE"
+    const val STITCH_CLOCK = "STITCH_CLOCK"
 }
 
 object SurfacePage {

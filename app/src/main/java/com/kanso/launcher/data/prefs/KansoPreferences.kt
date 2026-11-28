@@ -6,9 +6,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kanso.launcher.data.model.ActionTileBinding
 import com.kanso.launcher.data.model.KansoActionId
@@ -94,6 +96,9 @@ data class KansoSettingsState(
     val page1BatteryAction: KansoActionId = KansoActionId.BATTERY_SETTINGS,
     val page1WidgetThemes: Map<String, MechaWidgetTheme> = emptyMap(),
     val controlPanelTiles: List<ActionTileBinding> = ModularWidgetConfig.defaultControlPanelTiles(),
+    val widgetBevelDepth: Float = 1.0f,
+    val widgetHudGlow: Float = 0.65f,
+    val savedDiscoverUrls: Set<String> = emptySet(),
     val weather: CachedWeather = CachedWeather()
 ) {
     fun themeForShowcaseWidget(key: String): MechaWidgetTheme =
@@ -126,6 +131,9 @@ class KansoPreferences(private val context: Context) {
         val PAGE1_BATTERY_ACTION = stringPreferencesKey("page1_battery_action")
         val PAGE1_WIDGET_THEMES = stringPreferencesKey("page1_widget_themes_csv")
         val CONTROL_PANEL_TILES = stringPreferencesKey("control_panel_tiles_json")
+        val WIDGET_BEVEL_DEPTH = floatPreferencesKey("widget_bevel_depth")
+        val WIDGET_HUD_GLOW = floatPreferencesKey("widget_hud_glow")
+        val SAVED_DISCOVER_URLS = stringSetPreferencesKey("saved_discover_urls")
 
         val WEATHER_CITY = stringPreferencesKey("weather_city")
         val WEATHER_LAT = doublePreferencesKey("weather_lat")
@@ -194,6 +202,9 @@ class KansoPreferences(private val context: Context) {
                 ?: KansoActionId.BATTERY_SETTINGS,
             page1WidgetThemes = themesMap,
             controlPanelTiles = controlTiles,
+            widgetBevelDepth = (prefs[Keys.WIDGET_BEVEL_DEPTH] ?: 1.0f).coerceIn(0.4f, 1.8f),
+            widgetHudGlow = (prefs[Keys.WIDGET_HUD_GLOW] ?: 0.65f).coerceIn(0f, 1f),
+            savedDiscoverUrls = prefs[Keys.SAVED_DISCOVER_URLS] ?: emptySet(),
             weather = CachedWeather(
                 cityName = prefs[Keys.WEATHER_CITY] ?: "San Francisco",
                 latitude = prefs[Keys.WEATHER_LAT] ?: 37.7749,
@@ -317,6 +328,22 @@ class KansoPreferences(private val context: Context) {
 
     suspend fun setControlPanelTiles(tiles: List<ActionTileBinding>) {
         context.kansoDataStore.edit { it[Keys.CONTROL_PANEL_TILES] = ModularWidgetConfig.encodeTiles(tiles) }
+    }
+
+    suspend fun setWidgetBevelDepth(depth: Float) {
+        context.kansoDataStore.edit { it[Keys.WIDGET_BEVEL_DEPTH] = depth.coerceIn(0.4f, 1.8f) }
+    }
+
+    suspend fun setWidgetHudGlow(glow: Float) {
+        context.kansoDataStore.edit { it[Keys.WIDGET_HUD_GLOW] = glow.coerceIn(0f, 1f) }
+    }
+
+    suspend fun toggleSavedDiscoverUrl(url: String) {
+        if (url.isBlank()) return
+        context.kansoDataStore.edit { prefs ->
+            val current = prefs[Keys.SAVED_DISCOVER_URLS] ?: emptySet()
+            prefs[Keys.SAVED_DISCOVER_URLS] = if (url in current) current - url else current + url
+        }
     }
 
     suspend fun setUseAutoLocationWeather(enabled: Boolean) {

@@ -66,6 +66,7 @@ class KansoDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOwne
 
     override fun onCreate() {
         super.onCreate()
+        savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
     }
@@ -76,7 +77,7 @@ class KansoDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOwne
         isFullscreen = true
         isScreenBright = false
 
-        val app = application as KansoApplication
+        val app = application as? KansoApplication ?: return
         val composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@KansoDreamService)
             setViewTreeSavedStateRegistryOwner(this@KansoDreamService)

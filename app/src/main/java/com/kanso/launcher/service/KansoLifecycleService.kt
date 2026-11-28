@@ -94,7 +94,7 @@ class KansoLifecycleService : Service() {
         super.onCreate()
         ensureNotificationChannel()
         val notif = buildNotification()
-        runCatching {
+        val fgStarted = runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
                     NOTIFICATION_ID,
@@ -104,6 +104,12 @@ class KansoLifecycleService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notif)
             }
+            true
+        }.getOrDefault(false)
+
+        if (!fgStarted) {
+            stopSelf()
+            return
         }
 
         val app = application as? KansoApplication
@@ -179,7 +185,7 @@ class KansoLifecycleService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_kanso_status)
             .setContentTitle(getString(R.string.lifecycle_service_notif_title))
             .setContentText(getString(R.string.lifecycle_service_notif_text))
             .setOngoing(true)

@@ -90,6 +90,7 @@ class LauncherViewModel(
     val audioBands: StateFlow<List<Float>> = audioVisualizerEngine.bands
 
     val allInstalledApps: StateFlow<List<InstalledApp>> = appRepository.installedApps
+    val recentAppPackages: StateFlow<List<String>> = appRepository.recentPackages
 
     val hiddenPackages: StateFlow<Set<String>> = dao.observeHiddenApps()
         .map { list -> list.map { it.packageName }.toSet() }
@@ -267,12 +268,12 @@ class LauncherViewModel(
             KansoActionId.WIFI -> telemetryRepository.openInternetPanel()
             KansoActionId.MOBILE_DATA -> telemetryRepository.openMobileDataPanel()
             KansoActionId.BLUETOOTH -> telemetryRepository.openBluetoothControls()
-            KansoActionId.HOTSPOT -> telemetryRepository.openHotspotSettings()
+            KansoActionId.HOTSPOT -> telemetryRepository.toggleHotspot()
             KansoActionId.AIRPLANE -> telemetryRepository.openAirplaneSettings()
             KansoActionId.DND -> telemetryRepository.toggleDnd()
             KansoActionId.TORCH -> telemetryRepository.toggleTorch()
             KansoActionId.AUTO_ROTATE -> telemetryRepository.toggleAutoRotate()
-            KansoActionId.POWER_SAVING -> telemetryRepository.openPowerSavingSettings()
+            KansoActionId.POWER_SAVING -> telemetryRepository.togglePowerSaving()
             KansoActionId.SILENT_MODE -> telemetryRepository.cycleVolumeOrShowHud()
             KansoActionId.MEDIA_PLAY_PAUSE -> KansoNotificationListener.togglePlayPause(context)
             KansoActionId.LOCK_SCREEN -> {
@@ -292,6 +293,7 @@ class LauncherViewModel(
                 val shouldOpenKansoRecents = settings.value.forceRecentsOverrideEnabled ||
                     !KansoAccessibilityService.performSystemRecents()
                 if (shouldOpenKansoRecents) {
+                    KansoAccessibilityService.notifyRecentsOpened()
                     val intent = Intent(context, RecentsActivity::class.java).apply {
                         addFlags(
                             Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -361,6 +363,51 @@ class LauncherViewModel(
     fun resetControlPanelTiles() {
         viewModelScope.launch {
             preferences.setControlPanelTiles(ModularWidgetConfig.defaultControlPanelTiles())
+        }
+    }
+
+    fun setRingerMode(mode: Int) {
+        telemetryRepository.setRingerMode(mode)
+    }
+
+    fun openAudioOutputSettings() {
+        telemetryRepository.openAudioOutputSettings()
+    }
+
+    fun toggleDiscoverBookmark(url: String) {
+        viewModelScope.launch { preferences.toggleSavedDiscoverUrl(url) }
+    }
+
+    fun setWidgetBevelDepth(depth: Float) {
+        viewModelScope.launch { preferences.setWidgetBevelDepth(depth) }
+    }
+
+    fun setWidgetHudGlow(glow: Float) {
+        viewModelScope.launch { preferences.setWidgetHudGlow(glow) }
+    }
+
+    fun applyThemeToAllWorkspaceWidgets(theme: MechaWidgetTheme) {
+        viewModelScope.launch {
+            val modularTypes = setOf(
+                HomeItemType.TELEMETRY_CAPSULE,
+                HomeItemType.ACTION_MATRIX,
+                HomeItemType.TOGGLE_SWITCH,
+                HomeItemType.BATTERY_CAPSULE,
+                HomeItemType.MEDIA_HUD,
+                HomeItemType.WEATHER_BADGE,
+                HomeItemType.CALENDAR_RIBBON,
+                HomeItemType.QUICK_TOGGLE_CLUSTER,
+                HomeItemType.TRI_STATE_SWITCH,
+                HomeItemType.DUAL_SLIDER_CAPSULE,
+                HomeItemType.STITCH_CLOCK
+            )
+            homeItems.value
+                .filter { it.itemType in modularTypes }
+                .forEach { item ->
+                    val decoded = ModularWidgetConfig.decode(item.configJson)
+                    val updated = decoded.copy(mechaTheme = theme)
+                    dao.updateHomeItemConfig(item.id, ModularWidgetConfig.encode(updated), item.label)
+                }
         }
     }
 
@@ -664,18 +711,20 @@ class LauncherViewModel(
             val siblings = dao.getItemsOnPage(item.pageIndex).filter {
                 it.id != item.id && (it.itemType == HomeItemType.ACCENT_BLOCK) == isAccentBlock
             }
-            val colliding = siblings.firstOrNull { other ->
+            val colliding = siblings.filter { other ->
                 val colOverlap = safeCol < other.gridCol + other.spanColumns && safeCol + item.spanColumns > other.gridCol
                 val rowOverlap = safeRow < other.gridRow + other.spanRows && safeRow + item.spanRows > other.gridRow
                 colOverlap && rowOverlap
             }
-            if (colliding != null &&
-                colliding.spanColumns == item.spanColumns &&
-                colliding.spanRows == item.spanRows
+            if (colliding.isEmpty()) {
+                dao.updateHomeItemPosition(item.id, safeCol, safeRow)
+            } else if (colliding.size == 1 &&
+                colliding[0].spanColumns == item.spanColumns &&
+                colliding[0].spanRows == item.spanRows
             ) {
-                dao.updateHomeItemPosition(colliding.id, item.gridCol, item.gridRow)
+                dao.updateHomeItemPosition(colliding[0].id, item.gridCol, item.gridRow)
+                dao.updateHomeItemPosition(item.id, safeCol, safeRow)
             }
-            dao.updateHomeItemPosition(item.id, safeCol, safeRow)
         }
     }
 

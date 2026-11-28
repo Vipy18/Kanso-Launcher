@@ -1,11 +1,13 @@
 package com.kanso.launcher.data.telemetry
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -13,13 +15,15 @@ import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.hardware.display.DisplayManager
 import android.location.LocationManager
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.TrafficStats
-import android.net.Uri
+import android.net.wifi.WifiManager
 import android.nfc.NfcAdapter
 import android.os.BatteryManager
 import android.os.Build
@@ -29,6 +33,9 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.Settings
+import android.view.Display
+import android.view.Surface
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.kanso.launcher.data.model.KansoActionId
@@ -45,6 +52,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -79,6 +87,7 @@ data class TelemetryState(
     val networkGaugeFraction: Float = 0.24f,
     val freeRamText: String = "2.4GB",
     val ramUsedGb: String = "3.6",
+    val ramTotalGb: String = "8.0",
     val ramUsageFraction: Float = 0.56f,
     val storageUsedGb: String = "48",
     val storageTotalGb: String = "128GB",
@@ -88,6 +97,7 @@ data class TelemetryState(
     val isWifiConnected: Boolean = false,
     val isMobileConnected: Boolean = false,
     val isBluetoothEnabled: Boolean = false,
+    val isHotspotEnabled: Boolean = false,
     val isTorchEnabled: Boolean = false,
     val isAutoRotateEnabled: Boolean = true,
     val isAirplaneModeEnabled: Boolean = false,
@@ -97,6 +107,7 @@ data class TelemetryState(
     val isNfcEnabled: Boolean = false,
     val mediaVolumeFraction: Float = 0.5f,
     val brightnessFraction: Float = 0.65f,
+    val audioOutputLabel: String = "Device Speaker",
     val weekDays: List<CalendarDaySlot> = emptyList()
 ) {
     fun readoutFor(metric: TelemetryMetric): MetricReadout = when (metric) {
@@ -131,7 +142,7 @@ data class TelemetryState(
         KansoActionId.WIFI -> isWifiConnected
         KansoActionId.MOBILE_DATA -> isMobileConnected
         KansoActionId.BLUETOOTH -> isBluetoothEnabled
-        KansoActionId.HOTSPOT -> false
+        KansoActionId.HOTSPOT -> isHotspotEnabled
         KansoActionId.AIRPLANE -> isAirplaneModeEnabled
         KansoActionId.DND -> isDndEnabled
         KansoActionId.TORCH -> isTorchEnabled
@@ -165,6 +176,82 @@ class TelemetryRepository(
     private val context: Context,
     private val scope: CoroutineScope
 ) {
+    companion object {
+        private const val ACTION_WIFI_AP_STATE_CHANGED = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+        private const val EXTRA_WIFI_AP_STATE = "wifi_state"
+        private const val WIFI_AP_STATE_ENABLING = 12
+        private const val WIFI_AP_STATE_ENABLED = 13
+        private const val LOCAL_SOUND_SWITCH_GUARD_MS = 1200L
+        private val TETHER_INTERFACE_PREFIXES = listOf("ap0", "swlan0", "wlan1", "wlan2", "softap")
+
+        /**
+         * Strict 3-state sound cycle: NORMAL (Ring) -> VIBRATE -> SILENT -> NORMAL.
+         */
+        fun nextRingerMode(current: Int): Int = when (current) {
+            AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
+            AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
+            else -> AudioManager.RINGER_MODE_NORMAL
+        }
+
+        /**
+         * Pure multi-signal sound-state resolver supporting Global AOSP and Chinese OEM ROMs
+         * (Honor MagicOS, Huawei EMUI/HarmonyOS, Xiaomi HyperOS/MIUI, OPPO ColorOS, Vivo OriginOS).
+         */
+        fun computeEffectiveRingerMode(
+            rawMode: Int,
+            ringVol: Int,
+            ringMuted: Boolean,
+            totalSilenceDnd: Boolean,
+            globalModeRinger: Int = -1,
+            softwareSilentFallbackActive: Boolean = false
+        ): Int {
+            if (rawMode == AudioManager.RINGER_MODE_SILENT || totalSilenceDnd) {
+                return AudioManager.RINGER_MODE_SILENT
+            }
+
+            if (softwareSilentFallbackActive && (ringVol == 0 || ringMuted)) {
+                return AudioManager.RINGER_MODE_SILENT
+            }
+
+            // Chinese OEM tie-breaker: Settings.Global["mode_ringer"] distinguishes SILENT (0) vs VIBRATE (1) vs NORMAL (2)
+            if (globalModeRinger == AudioManager.RINGER_MODE_SILENT && ringVol == 0) {
+                return AudioManager.RINGER_MODE_SILENT
+            }
+
+            if (rawMode == AudioManager.RINGER_MODE_VIBRATE) {
+                return AudioManager.RINGER_MODE_VIBRATE
+            }
+
+            if (ringVol > 0 && !ringMuted) {
+                return AudioManager.RINGER_MODE_NORMAL
+            }
+
+            if (globalModeRinger == AudioManager.RINGER_MODE_VIBRATE) {
+                return AudioManager.RINGER_MODE_VIBRATE
+            }
+
+            if (ringMuted || ringVol == 0) {
+                return AudioManager.RINGER_MODE_SILENT
+            }
+
+            return AudioManager.RINGER_MODE_NORMAL
+        }
+
+        /**
+         * Broadcast race guard: decides whether an incoming volume/ringer broadcast should clear
+         * any software-silent flag. Prevents OEM Vibrate/Volume broadcasts from snapping Silent back.
+         */
+        fun shouldClearSoftwareSilentOnBroadcast(
+            sinceLocalSwitchMs: Long,
+            rawMode: Int,
+            ringVol: Int
+        ): Boolean {
+            if (sinceLocalSwitchMs <= LOCAL_SOUND_SWITCH_GUARD_MS) return false
+            if (ringVol > 0) return true
+            return rawMode == AudioManager.RINGER_MODE_NORMAL
+        }
+    }
+
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -172,6 +259,7 @@ class TelemetryRepository(
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+    private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
     private val _telemetry = MutableStateFlow(TelemetryState(weekDays = buildCurrentWeek()))
     val telemetry: StateFlow<TelemetryState> = _telemetry.asStateFlow()
@@ -193,7 +281,9 @@ class TelemetryRepository(
 
     private val settingsObserver = object : ContentObserver(mainHandler) {
         override fun onChange(selfChange: Boolean) {
-            refreshRingerAndAudioState()
+            if (System.currentTimeMillis() - lastLocalSoundSwitchMs > LOCAL_SOUND_SWITCH_GUARD_MS) {
+                refreshRingerAndAudioState()
+            }
             updateSystemToggles()
         }
     }
@@ -227,10 +317,10 @@ class TelemetryRepository(
                 "android.media.INTERNAL_RINGER_MODE_CHANGED_ACTION",
                 "android.media.VOLUME_CHANGED_ACTION" -> {
                     val sinceLocalSwitch = System.currentTimeMillis() - lastLocalSoundSwitchMs
-                    if (sinceLocalSwitch > 650L) {
+                    if (sinceLocalSwitch > LOCAL_SOUND_SWITCH_GUARD_MS) {
                         val ringVol = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_RING) }.getOrDefault(0)
                         val raw = runCatching { audioManager.ringerMode }.getOrDefault(AudioManager.RINGER_MODE_NORMAL)
-                        if (ringVol > 0 || raw == AudioManager.RINGER_MODE_NORMAL || raw == AudioManager.RINGER_MODE_VIBRATE) {
+                        if (shouldClearSoftwareSilentOnBroadcast(sinceLocalSwitch, raw, ringVol)) {
                             softwareSilentFallbackActive = false
                         }
                         refreshRingerAndAudioState()
@@ -244,11 +334,23 @@ class TelemetryRepository(
                     }
                 }
 
+                ACTION_WIFI_AP_STATE_CHANGED -> {
+                    val apState = intent.getIntExtra(EXTRA_WIFI_AP_STATE, -1)
+                    val enabled = if (apState != -1) {
+                        apState == WIFI_AP_STATE_ENABLED || apState == WIFI_AP_STATE_ENABLING
+                    } else {
+                        detectHotspotEnabled()
+                    }
+                    _telemetry.update { it.copy(isHotspotEnabled = enabled) }
+                }
+
                 Intent.ACTION_AIRPLANE_MODE_CHANGED,
                 PowerManager.ACTION_POWER_SAVE_MODE_CHANGED,
                 NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED,
                 LocationManager.PROVIDERS_CHANGED_ACTION -> {
-                    refreshRingerAndAudioState()
+                    if (System.currentTimeMillis() - lastLocalSoundSwitchMs > LOCAL_SOUND_SWITCH_GUARD_MS) {
+                        refreshRingerAndAudioState()
+                    }
                     updateSystemToggles()
                 }
             }
@@ -292,12 +394,12 @@ class TelemetryRepository(
             addAction("android.media.INTERNAL_RINGER_MODE_CHANGED_ACTION")
             addAction("android.media.VOLUME_CHANGED_ACTION")
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(ACTION_WIFI_AP_STATE_CHANGED)
             addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
             addAction(LocationManager.PROVIDERS_CHANGED_ACTION)
         }
-        // System broadcasts on Android 13/14+ must use RECEIVER_EXPORTED so audio & ringer events are never dropped
         runCatching {
             ContextCompat.registerReceiver(
                 context,
@@ -329,7 +431,9 @@ class TelemetryRepository(
                     sampleNetworkTraffic()
                     updateRamStorageAndConnectivity()
                     updateSystemToggles()
-                    refreshRingerAndAudioState()
+                    if (System.currentTimeMillis() - lastLocalSoundSwitchMs > LOCAL_SOUND_SWITCH_GUARD_MS) {
+                        refreshRingerAndAudioState()
+                    }
                 }
                 delay(gov.telemetryPollIntervalMs.coerceIn(1200L, 5000L))
             }
@@ -338,9 +442,8 @@ class TelemetryRepository(
 
     /**
      * Multi-signal device sound-state detector:
-     * Inspects AudioManager.ringerMode, ring stream volume == 0, stream mute status,
-     * Do Not Disturb total-silence filter, and system Global/System ringer keys so
-     * Honor, Xiaomi, Samsung, and Pixel ROMs all stay 100% in sync with hardware buttons.
+     * Inspects AudioManager.ringerMode, ring stream volume, stream mute status, DND total-silence
+     * filter, and Settings.Global["mode_ringer"] tie-breaker for Chinese OEM accuracy.
      */
     fun resolveEffectiveRingerMode(): Int {
         val rawMode = runCatching { audioManager.ringerMode }.getOrDefault(AudioManager.RINGER_MODE_NORMAL)
@@ -349,31 +452,24 @@ class TelemetryRepository(
         val totalSilenceDnd = runCatching {
             notificationManager.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE
         }.getOrDefault(false)
+        val globalModeRinger = runCatching {
+            Settings.Global.getInt(context.contentResolver, "mode_ringer", -1)
+        }.getOrDefault(-1)
 
-        if (rawMode == AudioManager.RINGER_MODE_SILENT || totalSilenceDnd) {
-            return AudioManager.RINGER_MODE_SILENT
-        }
+        val resolved = computeEffectiveRingerMode(
+            rawMode = rawMode,
+            ringVol = ringVol,
+            ringMuted = ringMuted,
+            totalSilenceDnd = totalSilenceDnd,
+            globalModeRinger = globalModeRinger,
+            softwareSilentFallbackActive = softwareSilentFallbackActive
+        )
 
-        // Keep software-silent authoritative when OEM AudioManager coerces STREAM_RING=0 into RINGER_MODE_VIBRATE
-        if (softwareSilentFallbackActive && (ringVol == 0 || ringMuted)) {
-            return AudioManager.RINGER_MODE_SILENT
-        }
-
-        if (rawMode == AudioManager.RINGER_MODE_VIBRATE) {
-            return AudioManager.RINGER_MODE_VIBRATE
-        }
-
-        if (ringVol > 0 && !ringMuted) {
+        if (resolved == AudioManager.RINGER_MODE_NORMAL && ringVol > 0 && !ringMuted) {
             lastAudibleRingVolume = ringVol
             softwareSilentFallbackActive = false
-            return AudioManager.RINGER_MODE_NORMAL
         }
-
-        if (ringMuted || ringVol == 0) {
-            return AudioManager.RINGER_MODE_SILENT
-        }
-
-        return AudioManager.RINGER_MODE_NORMAL
+        return resolved
     }
 
     fun refreshRingerAndAudioState() {
@@ -391,73 +487,105 @@ class TelemetryRepository(
 
     /**
      * Strict 3-state animated cycle: Ring -> Vibrate -> Silent -> Ring.
-     * Uses visible UI state as source of truth during rapid clicks and guards against
-     * OEM AudioManager coercing STREAM_RING=0 back to RINGER_MODE_VIBRATE.
      */
     fun cycleVolumeOrShowHud() {
-        val current = _telemetry.value.ringerMode
-        val nextTarget = when (current) {
-            AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
-            AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
+        val nextTarget = nextRingerMode(_telemetry.value.ringerMode)
+        setRingerMode(nextTarget)
+    }
+
+    fun setRingerMode(target: Int) {
+        val nextTarget = when (target) {
+            AudioManager.RINGER_MODE_SILENT -> AudioManager.RINGER_MODE_SILENT
+            AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_VIBRATE
             else -> AudioManager.RINGER_MODE_NORMAL
         }
 
+        // Enforce DND Policy Access when entering Silent mode (prevents Honor/Android 7+ SecurityException & snap-back)
+        if (nextTarget == AudioManager.RINGER_MODE_SILENT &&
+            !runCatching { notificationManager.isNotificationPolicyAccessGranted }.getOrDefault(false)
+        ) {
+            mainHandler.post {
+                Toast.makeText(
+                    context,
+                    "Grant Do Not Disturb access to enable Silent mode",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            openDndPolicyAccessSettings()
+            return
+        }
+
+        // Snapshot audible volumes ONLY while currently in RINGER_MODE_NORMAL with volume > 0
+        val currentRawMode = runCatching { audioManager.ringerMode }.getOrDefault(_telemetry.value.ringerMode)
+        if (currentRawMode == AudioManager.RINGER_MODE_NORMAL) {
+            val curRing = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_RING) }.getOrDefault(0)
+            if (curRing > 0) lastAudibleRingVolume = curRing
+            val curNotif = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION) }.getOrDefault(0)
+            if (curNotif > 0) lastAudibleNotifVolume = curNotif
+        }
+
         lastLocalSoundSwitchMs = System.currentTimeMillis()
+        val hasDndAccess = runCatching { notificationManager.isNotificationPolicyAccessGranted }.getOrDefault(false)
 
         when (nextTarget) {
             AudioManager.RINGER_MODE_VIBRATE -> {
                 softwareSilentFallbackActive = false
-                val curRing = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_RING) }.getOrDefault(0)
-                if (curRing > 0) lastAudibleRingVolume = curRing
-                val curNotif = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION) }.getOrDefault(0)
-                if (curNotif > 0) lastAudibleNotifVolume = curNotif
-                if (notificationManager.isNotificationPolicyAccessGranted &&
-                    notificationManager.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE
+                if (hasDndAccess &&
+                    runCatching { notificationManager.currentInterruptionFilter }.getOrDefault(
+                        NotificationManager.INTERRUPTION_FILTER_ALL
+                    ) == NotificationManager.INTERRUPTION_FILTER_NONE
                 ) {
-                    runCatching { notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL) }
+                    runCatching {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
                 }
-                runCatching {
-                    audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE
-                }
+                // Pure vibrate transition: never call ADJUST_UNMUTE or raise STREAM_RING above 0
+                runCatching { audioManager.ringerMode = AudioManager.RINGER_MODE_VIBRATE }
             }
 
             AudioManager.RINGER_MODE_SILENT -> {
-                val curRing = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_RING) }.getOrDefault(0)
-                if (curRing > 0) lastAudibleRingVolume = curRing
-                val curNotif = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION) }.getOrDefault(0)
-                if (curNotif > 0) lastAudibleNotifVolume = curNotif
-
-                val directSilentOk = runCatching {
-                    if (notificationManager.isNotificationPolicyAccessGranted) {
-                        audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
-                        audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT
-                    } else {
-                        audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
-                        audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT
+                softwareSilentFallbackActive = false
+                // Clear conflicting DND interruption filter first if active on Honor/Huawei so setRingerMode sticks
+                if (hasDndAccess) {
+                    val curFilter = runCatching { notificationManager.currentInterruptionFilter }
+                        .getOrDefault(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    if (curFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
+                        runCatching {
+                            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                        }
                     }
+                }
+                // Do NOT call adjustStreamVolume(ADJUST_MUTE) after setRingerMode(SILENT), which reverts Honor/Xiaomi back to VIBRATE/NORMAL
+                val silentApplied = runCatching {
+                    audioManager.ringerMode = AudioManager.RINGER_MODE_SILENT
+                    audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT
                 }.getOrDefault(false)
 
-                if (!directSilentOk) {
+                if (!silentApplied) {
                     softwareSilentFallbackActive = true
                     runCatching { audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0) }
                     runCatching { audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0) }
-                    runCatching { audioManager.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_MUTE, 0) }
-                    runCatching { audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_MUTE, 0) }
-                } else {
-                    softwareSilentFallbackActive = false
                 }
             }
 
             else -> {
                 softwareSilentFallbackActive = false
-                if (notificationManager.isNotificationPolicyAccessGranted &&
-                    notificationManager.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE
+                if (hasDndAccess &&
+                    runCatching { notificationManager.currentInterruptionFilter }.getOrDefault(
+                        NotificationManager.INTERRUPTION_FILTER_ALL
+                    ) == NotificationManager.INTERRUPTION_FILTER_NONE
                 ) {
-                    runCatching { notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL) }
+                    runCatching {
+                        notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                    }
                 }
                 runCatching { audioManager.ringerMode = AudioManager.RINGER_MODE_NORMAL }
-                runCatching { audioManager.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_UNMUTE, 0) }
-                runCatching { audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0) }
+                if (runCatching { audioManager.isStreamMute(AudioManager.STREAM_RING) }.getOrDefault(false)) {
+                    runCatching { audioManager.adjustStreamVolume(AudioManager.STREAM_RING, AudioManager.ADJUST_UNMUTE, 0) }
+                }
+                if (runCatching { audioManager.isStreamMute(AudioManager.STREAM_NOTIFICATION) }.getOrDefault(false)) {
+                    runCatching { audioManager.adjustStreamVolume(AudioManager.STREAM_NOTIFICATION, AudioManager.ADJUST_UNMUTE, 0) }
+                }
 
                 val maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING).coerceAtLeast(1)
                 val currentRing = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_RING) }.getOrDefault(0)
@@ -484,10 +612,10 @@ class TelemetryRepository(
 
         _telemetry.update { it.copy(ringerMode = nextTarget) }
         mainHandler.postDelayed({
-            if (System.currentTimeMillis() - lastLocalSoundSwitchMs >= 500L) {
+            if (System.currentTimeMillis() - lastLocalSoundSwitchMs >= LOCAL_SOUND_SWITCH_GUARD_MS - 50L) {
                 refreshRingerAndAudioState()
             }
-        }, 560L)
+        }, LOCAL_SOUND_SWITCH_GUARD_MS + 50L)
     }
 
     private fun updateClockAndCalendar() {
@@ -596,7 +724,14 @@ class TelemetryRepository(
         }.getOrNull()
         val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         val mobile = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-        _telemetry.update { it.copy(isWifiConnected = wifi, isMobileConnected = mobile) }
+        val hotspot = detectHotspotEnabled()
+        _telemetry.update {
+            it.copy(
+                isWifiConnected = wifi,
+                isMobileConnected = mobile,
+                isHotspotEnabled = hotspot
+            )
+        }
     }
 
     private fun updateRamStorageAndConnectivity() {
@@ -607,8 +742,10 @@ class TelemetryRepository(
         val usedMem = (totalMem - availMem).coerceAtLeast(0.0)
         val availGb = availMem / (1024.0 * 1024.0 * 1024.0)
         val usedGb = usedMem / (1024.0 * 1024.0 * 1024.0)
+        val totalGb = totalMem / (1024.0 * 1024.0 * 1024.0)
         val ramStr = String.format(Locale.US, "%.1fGB", availGb)
         val ramUsedStr = String.format(Locale.US, "%.1f", usedGb)
+        val ramTotalStr = String.format(Locale.US, "%.1f", totalGb)
         val ramFraction = (usedMem / totalMem).toFloat().coerceIn(0.05f, 1f)
 
         val statFs = runCatching { StatFs(Environment.getDataDirectory().path) }.getOrNull()
@@ -636,12 +773,18 @@ class TelemetryRepository(
             if (hasPerm) bm?.adapter?.isEnabled == true else false
         }.getOrDefault(false)
 
-        val effectiveRinger = resolveEffectiveRingerMode()
+        val hotspot = detectHotspotEnabled()
+        val effectiveRinger = if (System.currentTimeMillis() - lastLocalSoundSwitchMs > LOCAL_SOUND_SWITCH_GUARD_MS) {
+            resolveEffectiveRingerMode()
+        } else {
+            _telemetry.value.ringerMode
+        }
 
         _telemetry.update {
             it.copy(
                 freeRamText = ramStr,
                 ramUsedGb = ramUsedStr,
+                ramTotalGb = ramTotalStr,
                 ramUsageFraction = ramFraction,
                 storageUsedGb = storageUsedStr,
                 storageTotalGb = storageTotalStr,
@@ -650,7 +793,8 @@ class TelemetryRepository(
                 ringerMode = effectiveRinger,
                 isWifiConnected = wifi,
                 isMobileConnected = mobile,
-                isBluetoothEnabled = btEnabled
+                isBluetoothEnabled = btEnabled,
+                isHotspotEnabled = hotspot
             )
         }
     }
@@ -685,6 +829,8 @@ class TelemetryRepository(
             NfcAdapter.getDefaultAdapter(context)?.isEnabled == true
         }.getOrDefault(false)
 
+        val hotspotOn = detectHotspotEnabled()
+
         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
         val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         val volFrac = (curVol.toFloat() / maxVol.toFloat()).coerceIn(0f, 1f)
@@ -694,6 +840,8 @@ class TelemetryRepository(
         }.getOrDefault(165)
         val brightFrac = (brightRaw / 255f).coerceIn(0.05f, 1f)
 
+        val audioOutput = resolveAudioOutputLabel()
+
         _telemetry.update {
             it.copy(
                 isAutoRotateEnabled = autoRotate,
@@ -702,9 +850,87 @@ class TelemetryRepository(
                 isDndEnabled = dndActive,
                 isLocationEnabled = locationOn,
                 isNfcEnabled = nfcOn,
+                isHotspotEnabled = hotspotOn,
                 mediaVolumeFraction = volFrac,
-                brightnessFraction = brightFrac
+                brightnessFraction = brightFrac,
+                audioOutputLabel = audioOutput
             )
+        }
+    }
+
+    @SuppressLint("PrivateApi")
+    fun detectHotspotEnabled(): Boolean {
+        val wm = wifiManager
+        if (wm != null) {
+            val viaBool = runCatching {
+                val m = wm.javaClass.getDeclaredMethod("isWifiApEnabled")
+                m.isAccessible = true
+                m.invoke(wm) as? Boolean
+            }.getOrNull()
+            if (viaBool != null) return viaBool
+
+            val viaState = runCatching {
+                val m = wm.javaClass.getDeclaredMethod("getWifiApState")
+                m.isAccessible = true
+                m.invoke(wm) as? Int
+            }.getOrNull()
+            if (viaState != null) {
+                return viaState == WIFI_AP_STATE_ENABLED || viaState == WIFI_AP_STATE_ENABLING
+            }
+        }
+
+        // Fallback: inspect active tether network interfaces (ap0, swlan0, wlan1, wlan2)
+        return runCatching {
+            val ifaces = NetworkInterface.getNetworkInterfaces() ?: return@runCatching false
+            while (ifaces.hasMoreElements()) {
+                val nif = ifaces.nextElement()
+                val name = nif.name?.lowercase(Locale.ROOT).orEmpty()
+                if (nif.isUp && !nif.isLoopback && TETHER_INTERFACE_PREFIXES.any { name.startsWith(it) }) {
+                    return@runCatching true
+                }
+            }
+            false
+        }.getOrDefault(false)
+    }
+
+    private fun resolveAudioOutputLabel(): String {
+        val devices = runCatching {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        }.getOrNull() ?: return "Device Speaker"
+
+        val external = devices.firstOrNull { d ->
+            d.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                d.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && d.type == AudioDeviceInfo.TYPE_BLE_HEADSET) ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && d.type == AudioDeviceInfo.TYPE_BLE_SPEAKER) ||
+                d.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                d.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                d.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                d.type == AudioDeviceInfo.TYPE_USB_DEVICE
+        } ?: return "Device Speaker"
+
+        val name = external.productName?.toString()?.trim().orEmpty()
+        return when {
+            name.isNotBlank() && !name.equals(Build.MODEL, ignoreCase = true) -> name
+            external.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                external.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth Audio"
+            external.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                external.type == AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired Headset"
+            external.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                external.type == AudioDeviceInfo.TYPE_USB_DEVICE -> "USB Audio"
+            else -> "External Audio"
+        }
+    }
+
+    fun openAudioOutputSettings() {
+        val btIntent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(btIntent) }.onFailure {
+            val soundIntent = Intent(Settings.ACTION_SOUND_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching { context.startActivity(soundIntent) }
         }
     }
 
@@ -802,21 +1028,149 @@ class TelemetryRepository(
         }.getOrDefault(false)
     }
 
+    /**
+     * Direct-API Auto-Rotate toggle:
+     * Writes ACCELEROMETER_ROTATION (and USER_ROTATION when locking) if permitted;
+     * otherwise opens Write Settings permission screen directly.
+     */
     fun toggleAutoRotate(): Boolean {
-        if (!Settings.System.canWrite(context)) {
+        val canWrite = Settings.System.canWrite(context) || RomDetector.hasWriteSecureSettings(context)
+        if (!canWrite) {
             openWriteSettingsPermission()
             return false
         }
         val next = !_telemetry.value.isAutoRotateEnabled
-        return runCatching {
-            Settings.System.putInt(
+        val wrote = try {
+            val ok = Settings.System.putInt(
                 context.contentResolver,
                 Settings.System.ACCELEROMETER_ROTATION,
                 if (next) 1 else 0
             )
+            if (ok && !next) {
+                runCatching {
+                    Settings.System.putInt(
+                        context.contentResolver,
+                        Settings.System.USER_ROTATION,
+                        currentDisplayRotation()
+                    )
+                }
+            }
+            ok
+        } catch (_: SecurityException) {
+            false
+        } catch (_: Throwable) {
+            false
+        }
+
+        if (wrote) {
             _telemetry.update { it.copy(isAutoRotateEnabled = next) }
-            true
+            return true
+        }
+        openWriteSettingsPermission()
+        return false
+    }
+
+    private fun currentDisplayRotation(): Int {
+        return runCatching {
+            val dm = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            dm?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: Surface.ROTATION_0
+        }.getOrDefault(Surface.ROTATION_0)
+    }
+
+    /**
+     * Direct-API Battery Saver toggle:
+     * Uses WRITE_SECURE_SETTINGS (`Settings.Global["low_power"]` + Honor/Huawei `SmartModeStatus`).
+     * Opens Battery Saver Settings directly if blocked or ignored by OEM power manager.
+     */
+    fun togglePowerSaving(): Boolean {
+        val enable = !_telemetry.value.isPowerSaveEnabled
+        if (!RomDetector.hasWriteSecureSettings(context)) {
+            openPowerSavingSettings()
+            return false
+        }
+
+        val wroteGlobal = runCatching {
+            Settings.Global.putInt(context.contentResolver, "low_power", if (enable) 1 else 0)
         }.getOrDefault(false)
+
+        if (RomDetector.isHonorOrHuawei() && Settings.System.canWrite(context)) {
+            runCatching {
+                Settings.System.putInt(context.contentResolver, "SmartModeStatus", if (enable) 4 else 1)
+            }
+        }
+
+        if (!wroteGlobal) {
+            openPowerSavingSettings()
+            return false
+        }
+
+        _telemetry.update { it.copy(isPowerSaveEnabled = enable) }
+        mainHandler.postDelayed({
+            val actual = runCatching { powerManager.isPowerSaveMode }.getOrDefault(enable)
+            _telemetry.update { it.copy(isPowerSaveEnabled = actual) }
+            if (actual != enable) {
+                openPowerSavingSettings()
+            }
+        }, 320L)
+        return true
+    }
+
+    /**
+     * Direct-API Hotspot toggle:
+     * Attempts ConnectivityManager/TetheringManager or WifiManager reflection when permitted;
+     * otherwise opens Tether / Personal Hotspot settings directly.
+     */
+    @SuppressLint("PrivateApi")
+    fun toggleHotspot(): Boolean {
+        val enable = !_telemetry.value.isHotspotEnabled
+        val toggledDirectly = runCatching {
+            if (enable) {
+                val startMethod = connectivityManager.javaClass.methods.firstOrNull {
+                    it.name == "startTethering" && it.parameterTypes.size >= 2
+                }
+                if (startMethod != null) {
+                    val args = when (startMethod.parameterTypes.size) {
+                        2 -> arrayOf<Any?>(0, false)
+                        3 -> arrayOf<Any?>(0, false, null)
+                        else -> arrayOf<Any?>(0, false, null, mainHandler)
+                    }
+                    startMethod.invoke(connectivityManager, *args)
+                    true
+                } else {
+                    false
+                }
+            } else {
+                val stopMethod = connectivityManager.javaClass.getMethod("stopTethering", Int::class.javaPrimitiveType)
+                stopMethod.invoke(connectivityManager, 0)
+                true
+            }
+        }.getOrDefault(false)
+
+        if (toggledDirectly) {
+            _telemetry.update { it.copy(isHotspotEnabled = enable) }
+            mainHandler.postDelayed({
+                _telemetry.update { it.copy(isHotspotEnabled = detectHotspotEnabled()) }
+            }, 600L)
+            return true
+        }
+
+        val viaWifiAp = runCatching {
+            val wm = wifiManager ?: return@runCatching false
+            val setAp = wm.javaClass.getMethod(
+                "setWifiApEnabled",
+                @Suppress("DEPRECATION") android.net.wifi.WifiConfiguration::class.java,
+                Boolean::class.javaPrimitiveType
+            )
+            setAp.invoke(wm, null, enable) as? Boolean ?: false
+        }.getOrDefault(false)
+
+        if (viaWifiAp) {
+            _telemetry.update { it.copy(isHotspotEnabled = enable) }
+            return true
+        }
+
+        openHotspotSettings()
+        return false
     }
 
     fun toggleDnd(): Boolean {
@@ -914,10 +1268,17 @@ class TelemetryRepository(
     }
 
     fun openHotspotSettings() {
-        val intent = Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
+        val tetherIntent = Intent(Intent.ACTION_MAIN).apply {
+            component = ComponentName("com.android.settings", "com.android.settings.TetherSettings")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        runCatching { context.startActivity(intent) }
+        val launched = runCatching { context.startActivity(tetherIntent); true }.getOrDefault(false)
+        if (!launched) {
+            val fallback = Intent(Settings.ACTION_WIRELESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching { context.startActivity(fallback) }
+        }
     }
 
     fun openAirplaneSettings() {

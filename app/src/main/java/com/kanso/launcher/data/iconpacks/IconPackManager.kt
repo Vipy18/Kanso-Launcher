@@ -26,6 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
 data class IconPackInfo(
@@ -49,7 +51,7 @@ class IconPackManager(private val context: Context) {
     private val pm = context.packageManager
 
     private val iconCache = object : LruCache<String, ImageBitmap>(180) {}
-    private val parsedPackCache = mutableMapOf<String, ParsedIconPack>()
+    private val parsedPackCache = ConcurrentHashMap<String, ParsedIconPack>()
 
     companion object {
         private val ICON_PACK_INTENTS = listOf(
@@ -196,7 +198,7 @@ class IconPackManager(private val context: Context) {
 
         // 1. Draw <iconback>
         if (pack.iconBacks.isNotEmpty()) {
-            val backName = pack.iconBacks[Math.abs(source.hashCode()) % pack.iconBacks.size]
+            val backName = pack.iconBacks[(source.hashCode() and 0x7FFFFFFF) % pack.iconBacks.size]
             loadDrawableFromPack(pack, backName)?.let { backDrawable ->
                 backDrawable.setBounds(0, 0, size, size)
                 backDrawable.draw(canvas)
@@ -264,50 +266,60 @@ class IconPackManager(private val context: Context) {
         var scale = 0.85f
 
         val xmlResId = resources.getIdentifier("appfilter", "xml", packPackage)
-        val parser: XmlPullParser? = if (xmlResId != 0) {
+        var assetStream: InputStream? = null
+        val xmlResourceParser = if (xmlResId != 0) {
             runCatching { resources.getXml(xmlResId) }.getOrNull()
         } else {
-            runCatching {
-                val stream = resources.assets.open("appfilter.xml")
-                XmlPullParserFactory.newInstance().apply { isNamespaceAware = false }
-                    .newPullParser().apply { setInput(stream, "UTF-8") }
-            }.getOrNull()
+            null
         }
+        val parser: XmlPullParser? = xmlResourceParser ?: runCatching {
+            assetStream = resources.assets.open("appfilter.xml")
+            XmlPullParserFactory.newInstance().apply { isNamespaceAware = false }
+                .newPullParser().apply { setInput(assetStream, "UTF-8") }
+        }.onFailure {
+            runCatching { assetStream?.close() }
+            assetStream = null
+        }.getOrNull()
 
         if (parser != null) {
-            runCatching {
-                var eventType = parser.eventType
-                while (eventType != XmlPullParser.END_DOCUMENT) {
-                    if (eventType == XmlPullParser.START_TAG) {
-                        when (parser.name) {
-                            "item" -> {
-                                val comp = parser.getAttributeValue(null, "component")
-                                val draw = parser.getAttributeValue(null, "drawable")
-                                if (!comp.isNullOrBlank() && !draw.isNullOrBlank()) {
-                                    map[comp] = draw
+            try {
+                runCatching {
+                    var eventType = parser.eventType
+                    while (eventType != XmlPullParser.END_DOCUMENT) {
+                        if (eventType == XmlPullParser.START_TAG) {
+                            when (parser.name) {
+                                "item" -> {
+                                    val comp = parser.getAttributeValue(null, "component")
+                                    val draw = parser.getAttributeValue(null, "drawable")
+                                    if (!comp.isNullOrBlank() && !draw.isNullOrBlank()) {
+                                        map[comp] = draw
+                                    }
                                 }
-                            }
-                            "iconback" -> {
-                                for (i in 0 until parser.attributeCount) {
-                                    val value = parser.getAttributeValue(i)
-                                    if (!value.isNullOrBlank()) iconBacks.add(value)
+                                "iconback" -> {
+                                    for (i in 0 until parser.attributeCount) {
+                                        val value = parser.getAttributeValue(i)
+                                        if (!value.isNullOrBlank()) iconBacks.add(value)
+                                    }
                                 }
-                            }
-                            "iconmask" -> {
-                                iconMask = parser.getAttributeValue(null, "img1")
-                                    ?: if (parser.attributeCount > 0) parser.getAttributeValue(0) else null
-                            }
-                            "iconupon" -> {
-                                iconUpon = parser.getAttributeValue(null, "img1")
-                                    ?: if (parser.attributeCount > 0) parser.getAttributeValue(0) else null
-                            }
-                            "scale" -> {
-                                parser.getAttributeValue(null, "factor")?.toFloatOrNull()?.let { scale = it }
+                                "iconmask" -> {
+                                    iconMask = parser.getAttributeValue(null, "img1")
+                                        ?: if (parser.attributeCount > 0) parser.getAttributeValue(0) else null
+                                }
+                                "iconupon" -> {
+                                    iconUpon = parser.getAttributeValue(null, "img1")
+                                        ?: if (parser.attributeCount > 0) parser.getAttributeValue(0) else null
+                                }
+                                "scale" -> {
+                                    parser.getAttributeValue(null, "factor")?.toFloatOrNull()?.let { scale = it }
+                                }
                             }
                         }
+                        eventType = parser.next()
                     }
-                    eventType = parser.next()
                 }
+            } finally {
+                runCatching { xmlResourceParser?.close() }
+                runCatching { assetStream?.close() }
             }
         }
 

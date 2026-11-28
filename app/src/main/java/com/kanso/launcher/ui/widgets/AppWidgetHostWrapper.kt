@@ -202,223 +202,14 @@ fun ModularWidgetAddDialog(
 ) {
     val colors = LocalKansoColors.current
     var activeTab by remember { mutableIntStateOf(0) }
-
-    val templates = remember {
-        listOf(
-            KansoWidgetTemplate(
-                id = "theme_neumorphic_telemetry",
-                title = "Kanso Neumorphic — Telemetry Capsule",
-                subtitle = "2×2 • Classic soft raised neumorphic shell (Default style)",
-                badge = "DEFAULT // NEUMORPHIC",
-                itemType = HomeItemType.TELEMETRY_CAPSULE,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    mechaTheme = MechaWidgetTheme.DEFAULT,
-                    telemetryMetric = TelemetryMetric.NET_SPEED,
-                    tapAction = KansoActionId.WIFI,
-                    showAudioVisualizer = true
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "theme_machined_mecha",
-                title = "Machined Mecha — Telemetry Pod",
-                subtitle = "2×2 • Brushed metallic chassis with neumorphic bevel shadows",
-                badge = "OPTION // MACHINED MECHA",
-                itemType = HomeItemType.TELEMETRY_CAPSULE,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    mechaTheme = MechaWidgetTheme.MACHINED_MECHA,
-                    telemetryMetric = TelemetryMetric.CPU_LOAD,
-                    tapAction = KansoActionId.BATTERY_SETTINGS,
-                    showAudioVisualizer = true
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "theme_reactor_core",
-                title = "Reactor Core — Telemetry Capsule",
-                subtitle = "2×2 • Heavy octagon alloy plate, rotating accent stator & live dots",
-                badge = "OPTION // REACTOR CORE",
-                itemType = HomeItemType.TELEMETRY_CAPSULE,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    mechaTheme = MechaWidgetTheme.REACTOR_CORE,
-                    telemetryMetric = TelemetryMetric.CPU_LOAD,
-                    tapAction = KansoActionId.BATTERY_SETTINGS,
-                    showAudioVisualizer = true
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "theme_tactical_gauge",
-                title = "Tactical Gauge — 4×2 Command Matrix",
-                subtitle = "4×2 • Asymmetric armor chassis, machined HUD crosshairs & ticks",
-                badge = "THEME // TACTICAL GAUGE",
-                itemType = HomeItemType.ACTION_MATRIX,
-                spanCols = 4,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    mechaTheme = MechaWidgetTheme.TACTICAL_GAUGE,
-                    matrixRows = 2,
-                    matrixCols = 4,
-                    matrixTiles = ModularWidgetConfig.defaultMatrixTiles(8)
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "theme_data_stream",
-                title = "Data Stream — Network & RAM Monitor",
-                subtitle = "2×2 • Razor bevel frame, scanning laser sweep & live telemetry",
-                badge = "THEME // DATA STREAM",
-                itemType = HomeItemType.TELEMETRY_CAPSULE,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    mechaTheme = MechaWidgetTheme.DATA_STREAM,
-                    telemetryMetric = TelemetryMetric.NET_SPEED,
-                    tapAction = KansoActionId.WIFI,
-                    showAudioVisualizer = true
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "telemetry_ram",
-                title = "Telemetry Capsule — RAM Pressure",
-                subtitle = "2×2 • Live Memory Pressure Ring (Add multiple!)",
-                itemType = HomeItemType.TELEMETRY_CAPSULE,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    telemetryMetric = TelemetryMetric.RAM_USAGE,
-                    tapAction = KansoActionId.OPEN_SETTINGS,
-                    showAudioVisualizer = false
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "telemetry_ssd",
-                title = "Telemetry Capsule — Internal Storage",
-                subtitle = "2×2 • Live Storage Capacity Ring",
-                itemType = HomeItemType.TELEMETRY_CAPSULE,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    telemetryMetric = TelemetryMetric.STORAGE_USAGE,
-                    tapAction = KansoActionId.OPEN_SETTINGS,
-                    showAudioVisualizer = false
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "matrix_2x2",
-                title = "2×2 Radio Action Matrix",
-                subtitle = "2×2 • Wi-Fi, Data, Bluetooth, Hotspot",
-                itemType = HomeItemType.ACTION_MATRIX,
-                spanCols = 2,
-                spanRows = 2,
-                config = ModularWidgetConfig(
-                    matrixRows = 2,
-                    matrixCols = 2,
-                    matrixTiles = ModularWidgetConfig.defaultMatrixTiles(4)
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "matrix_4x4",
-                title = "4×4 Full Mecha Control Grid",
-                subtitle = "4×3 • 16 configurable hardware & app triggers",
-                itemType = HomeItemType.ACTION_MATRIX,
-                spanCols = 4,
-                spanRows = 3,
-                config = ModularWidgetConfig(
-                    matrixRows = 4,
-                    matrixCols = 4,
-                    matrixTiles = ModularWidgetConfig.defaultMatrixTiles(16)
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "toggle_silent",
-                title = "3-State Sound Switch",
-                subtitle = "2×1 • Spring animated Ring / Vibrate / Silent",
-                itemType = HomeItemType.TOGGLE_SWITCH,
-                spanCols = 2,
-                spanRows = 1,
-                config = ModularWidgetConfig(
-                    mechaTheme = MechaWidgetTheme.DEFAULT,
-                    toggleAction = KansoActionId.SILENT_MODE,
-                    customLabel = "SOUND"
-                )
-            ),
-            KansoWidgetTemplate(
-                id = "toggle_torch",
-                title = "Animated Switch — Flashlight",
-                subtitle = "2×1 • Spring sliding mecha toggle",
-                itemType = HomeItemType.TOGGLE_SWITCH,
-                spanCols = 2,
-                spanRows = 1,
-                config = ModularWidgetConfig(toggleAction = KansoActionId.TORCH, customLabel = "TORCH")
-            ),
-            KansoWidgetTemplate(
-                id = "toggle_rotate",
-                title = "Animated Switch — Auto-Rotate",
-                subtitle = "2×1 • Orientation lock toggle",
-                itemType = HomeItemType.TOGGLE_SWITCH,
-                spanCols = 2,
-                spanRows = 1,
-                config = ModularWidgetConfig(toggleAction = KansoActionId.AUTO_ROTATE, customLabel = "ROTATE")
-            ),
-            KansoWidgetTemplate(
-                id = "media_hud",
-                title = "Media HUD Card",
-                subtitle = "4×1 • Live Spotify, YT, Apple & Prime Music",
-                itemType = HomeItemType.MEDIA_HUD,
-                spanCols = 4,
-                spanRows = 1
-            ),
-            KansoWidgetTemplate(
-                id = "weather_badge",
-                title = "Scalloped Weather Medallion",
-                subtitle = "2×2 • Location-synced Open-Meteo",
-                itemType = HomeItemType.WEATHER_BADGE,
-                spanCols = 2,
-                spanRows = 2
-            ),
-            KansoWidgetTemplate(
-                id = "calendar_ribbon",
-                title = "7-Day Calendar Ribbon",
-                subtitle = "4×1 • Full-width tactile week strip",
-                itemType = HomeItemType.CALENDAR_RIBBON,
-                spanCols = 4,
-                spanRows = 1
-            )
-        )
-    }
-
-    val accentBlockTemplates = remember {
-        AccentBlockStyle.entries.map { style ->
-            val (cols, rows) = when (style) {
-                AccentBlockStyle.S_CURVE_SHELF -> 4 to 2
-                AccentBlockStyle.CHAMFERED_PLATE -> 2 to 2
-                AccentBlockStyle.DIAGONAL_SLAB -> 4 to 1
-                AccentBlockStyle.CORNER_ARMOR -> 2 to 2
-                AccentBlockStyle.STEPPED_MONOLITH -> 3 to 2
-                AccentBlockStyle.SPLIT_CHEVRON -> 4 to 1
-                AccentBlockStyle.PILL_BAR -> 4 to 1
-            }
-            KansoWidgetTemplate(
-                id = "accent_block_${style.name.lowercase()}",
-                title = style.title,
-                subtitle = "${cols}×${rows} • ${style.shortCode} architectural plate (Accent color only)",
-                badge = "ACCENT BLOCK // LAYER 0",
-                itemType = HomeItemType.ACCENT_BLOCK,
-                spanCols = cols,
-                spanRows = rows,
-                config = ModularWidgetConfig(accentBlockStyle = style)
-            )
-        }
-    }
+    var selectedFilter by remember { mutableStateOf(StitchThemeFilter.KANSO_HYBRID) }
+    val accentBlockTemplates = remember { buildAccentBlockTemplates() }
 
     val tabs = remember(allowExternalWidgets) {
         if (allowExternalWidgets) {
-            listOf("Widgets", "Accent Blocks", "Android")
+            listOf("Widget Matrix", "Accent Blocks", "Android")
         } else {
-            listOf("Widgets", "Accent Blocks")
+            listOf("Widget Matrix", "Accent Blocks")
         }
     }
 
@@ -437,14 +228,14 @@ fun ModularWidgetAddDialog(
             ) {
                 Column {
                     Text(
-                        text = "Widget & Block Catalog",
+                        text = "Widget Matrix Picker",
                         color = colors.inkPrimary,
                         fontFamily = SpaceGroteskFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
                     Text(
-                        text = "NEUMORPHIC & MECHA MODULES • ACCENT BLOCKS",
+                        text = "LIVE MULTI-THEME CATALOG • ACCENT BLOCKS",
                         color = colors.accent,
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold,
@@ -493,26 +284,49 @@ fun ModularWidgetAddDialog(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            if (activeTab == 0 || activeTab == 1) {
-                val activeList = if (activeTab == 0) templates else accentBlockTemplates
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 430.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(activeList, key = { it.id }) { tmpl ->
-                        Column(
-                            modifier = Modifier
-                                .testTag("widget_template_${tmpl.id}")
-                                .fillMaxWidth()
-                                .kansoNeumorphic(raised = false, cornerRadius = 20.dp)
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (tmpl.badge.isNotBlank()) {
+            when (activeTab) {
+                0 -> {
+                    StitchThemeFilterRibbon(
+                        selected = selectedFilter,
+                        onSelect = { selectedFilter = it }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    WidgetMatrixCatalogContent(
+                        telemetry = telemetry,
+                        media = media,
+                        weather = weather,
+                        audioBands = audioBands,
+                        use24HourClock = true,
+                        selectedFilter = selectedFilter,
+                        showPhysicsControls = false,
+                        onAddWidget = { tmpl ->
+                            onAddKansoWidget(tmpl)
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                    )
+                }
+
+                1 -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 430.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(accentBlockTemplates, key = { it.id }) { tmpl ->
+                            Column(
+                                modifier = Modifier
+                                    .testTag("widget_template_${tmpl.id}")
+                                    .fillMaxWidth()
+                                    .kansoNeumorphic(raised = false, cornerRadius = 20.dp)
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Text(
                                     text = tmpl.badge,
                                     color = colors.accent,
@@ -521,137 +335,73 @@ fun ModularWidgetAddDialog(
                                     fontSize = 9.sp,
                                     letterSpacing = 0.8.sp
                                 )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 66.dp, max = 144.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                when (tmpl.itemType) {
-                                    HomeItemType.ACCENT_BLOCK -> AccentColorBlockWidget(
-                                        style = tmpl.config.accentBlockStyle,
-                                        flipped = tmpl.config.accentBlockFlipped,
-                                        rotated = tmpl.config.accentBlockRotated,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(92.dp)
-                                    )
-                                    HomeItemType.TELEMETRY_CAPSULE -> NetworkTelemetryWidget(
-                                        readout = telemetry.readoutFor(tmpl.config.telemetryMetric),
-                                        metric = tmpl.config.telemetryMetric,
-                                        mechaTheme = tmpl.config.mechaTheme,
-                                        audioBands = audioBands,
-                                        isAudioActive = media.isPlaying,
-                                        showAudioVisualizer = tmpl.config.showAudioVisualizer,
-                                        modifier = Modifier.size(width = 162.dp, height = 140.dp)
-                                    )
-                                    HomeItemType.ACTION_MATRIX -> ActionMatrixWidget(
-                                        rows = tmpl.config.matrixRows,
-                                        cols = tmpl.config.matrixCols,
-                                        tiles = tmpl.config.matrixTiles,
-                                        telemetry = telemetry,
-                                        isMediaPlaying = media.isPlaying,
-                                        mechaTheme = tmpl.config.mechaTheme,
-                                        onTileClick = {},
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(if (tmpl.config.matrixRows >= 3) 136.dp else 108.dp)
-                                    )
-                                    HomeItemType.TOGGLE_SWITCH -> ModularToggleSwitchWidget(
-                                        action = tmpl.config.toggleAction,
-                                        customLabel = tmpl.config.customLabel,
-                                        telemetry = telemetry,
-                                        isMediaPlaying = media.isPlaying,
-                                        mechaTheme = tmpl.config.mechaTheme,
-                                        onToggle = {},
-                                        modifier = Modifier
-                                            .width(184.dp)
-                                            .height(54.dp)
-                                    )
-                                    HomeItemType.MEDIA_HUD -> MediaHudWidget(
-                                        media = media,
-                                        mechaTheme = tmpl.config.mechaTheme,
-                                        onPlayPause = {},
-                                        onPrevious = {},
-                                        onNext = {},
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    HomeItemType.WEATHER_BADGE -> WeatherBadgeWidget(
-                                        weather = weather,
-                                        mechaTheme = tmpl.config.mechaTheme,
-                                        onClick = {}
-                                    )
-                                    HomeItemType.CALENDAR_RIBBON -> CalendarRibbonWidget(
-                                        days = telemetry.weekDays,
-                                        mechaTheme = tmpl.config.mechaTheme,
-                                        onClick = {}
-                                    )
-                                    else -> BatteryCapsuleWidget(
-                                        batteryPercent = telemetry.batteryPercent,
-                                        isCharging = telemetry.isCharging,
-                                        mechaTheme = tmpl.config.mechaTheme
-                                    )
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = tmpl.title,
-                                        color = colors.inkPrimary,
-                                        fontFamily = SpaceGroteskFontFamily,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = tmpl.subtitle,
-                                        color = colors.inkSecondary,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        fontSize = 9.5.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Box(
+                                AccentColorBlockWidget(
+                                    style = tmpl.config.accentBlockStyle,
+                                    flipped = tmpl.config.accentBlockFlipped,
+                                    rotated = tmpl.config.accentBlockRotated,
                                     modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(colors.accent)
-                                        .kansoTactileClickable {
-                                            onAddKansoWidget(tmpl)
-                                            onDismiss()
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                                        .fillMaxWidth()
+                                        .height(92.dp)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "PLACE",
-                                        color = colors.onAccent,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 10.sp
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = tmpl.title,
+                                            color = colors.inkPrimary,
+                                            fontFamily = SpaceGroteskFontFamily,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = tmpl.subtitle,
+                                            color = colors.inkSecondary,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontSize = 9.5.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(colors.accent)
+                                            .kansoTactileClickable {
+                                                onAddKansoWidget(tmpl)
+                                                onDismiss()
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                                    ) {
+                                        Text(
+                                            text = "PLACE",
+                                            color = colors.onAccent,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                ExternalWidgetPickerList(
-                    providers = providers,
-                    onSelectProvider = {
-                        onSelectExternalProvider(it)
-                        onDismiss()
-                    },
-                    modifier = Modifier.heightIn(max = 430.dp)
-                )
+
+                else -> {
+                    ExternalWidgetPickerList(
+                        providers = providers,
+                        onSelectProvider = {
+                            onSelectExternalProvider(it)
+                            onDismiss()
+                        },
+                        modifier = Modifier.heightIn(max = 430.dp)
+                    )
+                }
             }
         }
     }

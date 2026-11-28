@@ -78,6 +78,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -159,7 +160,7 @@ fun HomeScreen(
     var isEditMode by remember { mutableStateOf(false) }
     var selectedShowcaseWidgetKey by remember(isEditMode) { mutableStateOf<String?>(null) }
     var shadeStage by remember { mutableStateOf(ShadeStage.CLOSED) }
-    var openFolder by remember { mutableStateOf<FolderWithApps?>(null) }
+    var openFolderId by remember { mutableStateOf<Long?>(null) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var showWidgetAddDialog by remember { mutableStateOf(false) }
     var editingShowcaseWidgetKey by remember { mutableStateOf<String?>(null) }
@@ -211,9 +212,11 @@ fun HomeScreen(
         colors.canvasBg
     }
 
+    var lastTouchFractionX by remember { mutableFloatStateOf(0.25f) }
+
     val openShadeStep: () -> Unit = {
         shadeStage = when (shadeStage) {
-            ShadeStage.CLOSED -> ShadeStage.NOTIFICATIONS
+            ShadeStage.CLOSED -> if (lastTouchFractionX >= 0.5f) ShadeStage.CONTROLS else ShadeStage.NOTIFICATIONS
             ShadeStage.NOTIFICATIONS -> ShadeStage.CONTROLS
             ShadeStage.CONTROLS -> ShadeStage.CONTROLS
         }
@@ -254,6 +257,18 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(canvasColor)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.firstOrNull()?.let { change ->
+                            if (size.width > 0) {
+                                lastTouchFractionX = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            }
+                        }
+                    }
+                }
+            }
             .pointerInput(settings.lockscreenCompanionEnabled) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -267,7 +282,12 @@ fun HomeScreen(
             }
             .pointerInput(shadeStage, pagerState.currentPage) {
                 detectVerticalDragGestures(
-                    onDragStart = { verticalDragAccum = 0f },
+                    onDragStart = { offset ->
+                        verticalDragAccum = 0f
+                        if (size.width > 0) {
+                            lastTouchFractionX = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        }
+                    },
                     onVerticalDrag = { _, dragAmount -> verticalDragAccum += dragAmount },
                     onDragEnd = {
                         if (pagerState.currentPage != 0) {
@@ -275,7 +295,7 @@ fun HomeScreen(
                                 verticalDragAccum < -105f && shadeStage == ShadeStage.CLOSED -> onOpenDrawer()
                                 verticalDragAccum > 105f -> {
                                     shadeStage = when (shadeStage) {
-                                        ShadeStage.CLOSED -> ShadeStage.NOTIFICATIONS
+                                        ShadeStage.CLOSED -> if (lastTouchFractionX >= 0.5f) ShadeStage.CONTROLS else ShadeStage.NOTIFICATIONS
                                         ShadeStage.NOTIFICATIONS -> ShadeStage.CONTROLS
                                         ShadeStage.CONTROLS -> ShadeStage.CONTROLS
                                     }
@@ -317,7 +337,11 @@ fun HomeScreen(
                         overrides = overrides,
                         onLaunchApp = { pkg, act -> viewModel.appRepository.launchApp(pkg, act) },
                         onVoiceSearch = { viewModel.appRepository.openGoogleVoice() },
-                        onReturnHome = { scope.launch { pagerState.animateScrollToPage(1) } }
+                        onReturnHome = { scope.launch { pagerState.animateScrollToPage(1) } },
+                        weather = settings.weather,
+                        telemetry = telemetry,
+                        savedUrls = settings.savedDiscoverUrls,
+                        onToggleBookmark = viewModel::toggleDiscoverBookmark
                     )
 
                     1 -> HomeShowcasePage(
@@ -407,7 +431,7 @@ fun HomeScreen(
                         isEditMode = isEditMode,
                         onEnterEditMode = { isEditMode = true },
                         onLaunchApp = { pkg, act -> viewModel.appRepository.launchApp(pkg, act) },
-                        onOpenFolder = { openFolder = it },
+                        onOpenFolder = { openFolderId = it.folder.folderId },
                         onExecuteAction = { action, pkg, act ->
                             viewModel.executeAction(context, action, pkg, act, onOpenSettings)
                         },
@@ -443,6 +467,10 @@ fun HomeScreen(
                                 }
                             }
                         },
+                        onSelectRingerMode = { viewModel.setRingerMode(it) },
+                        onSetBrightness = { viewModel.telemetryRepository.setBrightnessFraction(it) },
+                        onSetVolume = { viewModel.telemetryRepository.setMediaVolumeFraction(it) },
+                        use24HourClock = settings.use24HourClock,
                         nestedScrollConnection = homeVerticalNestedScroll,
                         onOpenDrawer = onOpenDrawer
                     )
@@ -656,10 +684,16 @@ fun HomeScreen(
             onPlayPause = { KansoNotificationListener.togglePlayPause(context) },
             onPrevTrack = { KansoNotificationListener.skipPrevious(context) },
             onNextTrack = { KansoNotificationListener.skipNext(context) },
-            onOpenPlayerApp = { pkg -> viewModel.appRepository.launchApp(pkg, "") }
+            onOpenPlayerApp = { pkg -> viewModel.appRepository.launchApp(pkg, "") },
+            onOpenAudioOutputSettings = { viewModel.openAudioOutputSettings() },
+            onOpenSettings = {
+                shadeStage = ShadeStage.CLOSED
+                onOpenSettings()
+            }
         )
     }
 
+    val openFolder = openFolderId?.let { folders[it] }
     openFolder?.let { folder ->
         CircularFolderDialog(
             folder = folder,
@@ -673,7 +707,7 @@ fun HomeScreen(
             onRemoveApp = { pkg, act ->
                 viewModel.removeAppFromFolder(folder.folder.folderId, pkg, act)
             },
-            onDismiss = { openFolder = null }
+            onDismiss = { openFolderId = null }
         )
     }
 
@@ -1342,6 +1376,10 @@ private fun HomeWorkspacePage(
     onAddWidget: () -> Unit,
     onAddWorkspacePage: () -> Unit,
     onRemoveWorkspacePage: () -> Unit,
+    onSelectRingerMode: (Int) -> Unit,
+    onSetBrightness: (Float) -> Unit,
+    onSetVolume: (Float) -> Unit,
+    use24HourClock: Boolean,
     nestedScrollConnection: NestedScrollConnection,
     onOpenDrawer: () -> Unit
 ) {
@@ -1463,6 +1501,10 @@ private fun HomeWorkspacePage(
                 onMoveItemToCell = onMoveItemToCell,
                 onConfigureItem = onConfigureItem,
                 onRemoveItem = onRemoveItem,
+                onSelectRingerMode = onSelectRingerMode,
+                onSetBrightness = onSetBrightness,
+                onSetVolume = onSetVolume,
+                use24HourClock = use24HourClock,
                 contentTopPadding = statusBarTop + if (isEditMode) 124.dp else 14.dp,
                 contentBottomPadding = navBarBottom + 114.dp,
                 horizontalContentInset = 14.dp,

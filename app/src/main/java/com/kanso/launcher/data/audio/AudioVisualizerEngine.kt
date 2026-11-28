@@ -45,6 +45,7 @@ class AudioVisualizerEngine(
     private val _isUsingLiveFft = MutableStateFlow(false)
     val isUsingLiveFft: StateFlow<Boolean> = _isUsingLiveFft.asStateFlow()
 
+    private val visualizerLock = Any()
     private var visualizer: Visualizer? = null
     private var lastFftUpdateMs: Long = 0L
     private var pulseJob: Job? = null
@@ -88,45 +89,47 @@ class AudioVisualizerEngine(
             _isUsingLiveFft.value = false
             return
         }
-        if (visualizer != null) return
+        synchronized(visualizerLock) {
+            if (visualizer != null) return
 
-        val attached = runCatching {
-            val viz = Visualizer(0).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(512)
-                setDataCaptureListener(
-                    object : Visualizer.OnDataCaptureListener {
-                        override fun onWaveFormDataCapture(
-                            visualizer: Visualizer?,
-                            waveform: ByteArray?,
-                            samplingRate: Int
-                        ) = Unit
+            val attached = runCatching {
+                val viz = Visualizer(0).apply {
+                    captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(512)
+                    setDataCaptureListener(
+                        object : Visualizer.OnDataCaptureListener {
+                            override fun onWaveFormDataCapture(
+                                visualizer: Visualizer?,
+                                waveform: ByteArray?,
+                                samplingRate: Int
+                            ) = Unit
 
-                        override fun onFftDataCapture(
-                            visualizer: Visualizer?,
-                            fft: ByteArray?,
-                            samplingRate: Int
-                        ) {
-                            if (fft == null || fft.size < 4) return
-                            val computed = computeBandsFromFft(fft)
-                            if (computed.any { it > 0.08f }) {
-                                lastFftUpdateMs = System.currentTimeMillis()
-                                _isUsingLiveFft.value = true
-                                _bands.value = computed
+                            override fun onFftDataCapture(
+                                visualizer: Visualizer?,
+                                fft: ByteArray?,
+                                samplingRate: Int
+                            ) {
+                                if (fft == null || fft.size < 4) return
+                                val computed = computeBandsFromFft(fft)
+                                if (computed.any { it > 0.08f }) {
+                                    lastFftUpdateMs = System.currentTimeMillis()
+                                    _isUsingLiveFft.value = true
+                                    _bands.value = computed
+                                }
                             }
-                        }
-                    },
-                    Visualizer.getMaxCaptureRate() / 2,
-                    false,
-                    true
-                )
-                enabled = true
-            }
-            visualizer = viz
-            true
-        }.getOrDefault(false)
+                        },
+                        Visualizer.getMaxCaptureRate() / 2,
+                        false,
+                        true
+                    )
+                    enabled = true
+                }
+                visualizer = viz
+                true
+            }.getOrDefault(false)
 
-        if (!attached) {
-            releaseVisualizer()
+            if (!attached) {
+                releaseVisualizerLocked()
+            }
         }
     }
 
@@ -193,6 +196,12 @@ class AudioVisualizerEngine(
     }
 
     fun releaseVisualizer() {
+        synchronized(visualizerLock) {
+            releaseVisualizerLocked()
+        }
+    }
+
+    private fun releaseVisualizerLocked() {
         runCatching {
             visualizer?.enabled = false
             visualizer?.release()

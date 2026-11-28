@@ -1,9 +1,13 @@
 package com.kanso.launcher.ui.settings
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,7 +34,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Home
@@ -42,6 +48,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -91,7 +98,8 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     viewModel: LauncherViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onOpenWidgetMatrix: () -> Unit = {}
 ) {
     BackHandler { onNavigateBack() }
 
@@ -213,6 +221,71 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
+                // 0. STITCH MULTI-THEME WIDGET MATRIX GALLERY
+                item {
+                    SectionLabel("00 // MULTI-THEME WIDGET MATRIX")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .testTag("settings_open_widget_matrix")
+                            .fillMaxWidth()
+                            .kansoNeumorphic(raised = true, cornerRadius = 24.dp)
+                            .kansoTactileClickable(onClick = onOpenWidgetMatrix)
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(colors.accent),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Widgets,
+                                    contentDescription = "Open Widget Matrix",
+                                    tint = colors.onAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Widget Matrix Gallery",
+                                    color = colors.inkPrimary,
+                                    fontFamily = SpaceGroteskFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    text = "Live 4-theme catalog, bevel physics & 1-tap apply",
+                                    color = colors.inkSecondary,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(colors.surfaceInset)
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "OPEN",
+                                color = colors.accent,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+
                 // 1. APPEARANCE
                 item {
                     SectionLabel("01 // APPEARANCE")
@@ -908,17 +981,11 @@ fun SettingsScreen(
                         )
                         PermissionHealthRow(
                             title = "Do Not Disturb Policy Access",
-                            subtitle = "Required for 3-state hardware Silent / Vibrate / Ring sound switch",
+                            subtitle = "Required for 3-state hardware Silent / Vibrate / Ring switching (Honor / AOSP)",
                             granted = health.dndPolicyGranted,
                             testTag = "perm_dnd_policy",
                             onGrantClick = {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
-                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        }
-                                    )
-                                }
+                                viewModel.telemetryRepository.openDndPolicyAccessSettings()
                             }
                         )
                         PermissionHealthRow(
@@ -934,16 +1001,35 @@ fun SettingsScreen(
                         )
                         PermissionHealthRow(
                             title = "Modify System Settings",
-                            subtitle = "Allows Control Panel Brightness slider & Auto-Rotate toggle",
+                            subtitle = if (health.isChineseRom) {
+                                "Brightness & Auto-Rotate. If grayed out on CN ROM, open App Info -> 3-dots -> Allow restricted settings"
+                            } else {
+                                "Allows Control Panel Brightness slider & Auto-Rotate toggle"
+                            },
                             granted = health.writeSettingsGranted,
                             testTag = "perm_write_settings",
                             onGrantClick = {
                                 viewModel.telemetryRepository.openWriteSettingsPermission()
                             }
                         )
+                        if (health.isChineseRom && !health.writeSettingsGranted) {
+                            ActionPillButton(
+                                icon = Icons.Rounded.VerifiedUser,
+                                label = "Open App Info (Restricted Settings)",
+                                highlight = false,
+                                modifier = Modifier
+                                    .testTag("open_app_info_restricted_btn")
+                                    .fillMaxWidth(),
+                                onClick = { RomDetector.openAppDetailsSettings(context) }
+                            )
+                        }
                         PermissionHealthRow(
-                            title = "Accessibility Lock & Multitasking Service",
-                            subtitle = "Forces Kanso Lockscreen & Multitasking previews over stock UI on all devices",
+                            title = "Accessibility Service (Recents, Lock & CN Home)",
+                            subtitle = if (health.isChineseRom) {
+                                "Required on CN ROMs for Home persistence, Multitasking override & assisted Force Stop"
+                            } else {
+                                "Forces Kanso Lockscreen, Multitasking override & assisted Force Stop"
+                            },
                             granted = health.accessibilityGranted,
                             testTag = "perm_accessibility_service",
                             onGrantClick = { RomDetector.openAccessibilitySettings(context) }
@@ -955,6 +1041,17 @@ fun SettingsScreen(
                             testTag = "perm_usage_stats",
                             onGrantClick = { RomDetector.openUsageAccessSettings(context) }
                         )
+                        if (health.isChineseRom) {
+                            ActionPillButton(
+                                icon = Icons.Rounded.BatteryChargingFull,
+                                label = "OEM Battery & App Launch Protection",
+                                highlight = true,
+                                modifier = Modifier
+                                    .testTag("oem_battery_launch_btn")
+                                    .fillMaxWidth(),
+                                onClick = { RomDetector.openOemBatteryAndLaunchSettings(context) }
+                            )
+                        }
                         PermissionHealthRow(
                             title = "Display Over Other Apps",
                             subtitle = "Enables overlay hooks & optional lockscreen companion on OEM ROMs",
@@ -994,14 +1091,76 @@ fun SettingsScreen(
                         PermissionHealthRow(
                             title = "Write Secure Settings (ADB / OEM)",
                             subtitle = if (health.writeSecureSettingsGranted) {
-                                "Granted — advanced system toggles unlocked"
+                                "Granted — direct Battery Saver & secure system toggles unlocked"
                             } else {
-                                "Optional ADB grant: pm grant com.kanso.launcher android.permission.WRITE_SECURE_SETTINGS"
+                                "Optional ADB grant unlocks direct Battery Saver toggling without opening Settings"
                             },
                             granted = health.writeSecureSettingsGranted,
                             testTag = "perm_write_secure_settings",
                             onGrantClick = { viewModel.telemetryRepository.openSystemSettings() }
                         )
+                        if (!health.writeSecureSettingsGranted) {
+                            val adbCommands = "adb shell pm grant com.kanso.launcher android.permission.WRITE_SECURE_SETTINGS\n" +
+                                "adb shell appops set com.kanso.launcher WRITE_SETTINGS allow"
+                            Column(
+                                modifier = Modifier
+                                    .testTag("adb_helper_card")
+                                    .fillMaxWidth()
+                                    .kansoNeumorphic(raised = false, cornerRadius = 14.dp)
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "ADB HELPER COMMANDS",
+                                        color = colors.accent,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.5.sp,
+                                        letterSpacing = 0.8.sp
+                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .testTag("copy_adb_commands_btn")
+                                            .clip(CircleShape)
+                                            .background(colors.accent)
+                                            .kansoTactileClickable {
+                                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                                cm?.setPrimaryClip(ClipData.newPlainText("Kanso ADB Commands", adbCommands))
+                                                Toast.makeText(context, "ADB commands copied", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.ContentCopy,
+                                            contentDescription = "Copy ADB commands",
+                                            tint = colors.onAccent,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = "COPY",
+                                            color = colors.onAccent,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = adbCommands,
+                                    color = colors.inkSecondary,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontSize = 9.5.sp,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
