@@ -6,10 +6,6 @@ app/build/
 *.aab
 *.aar
 
-# Release & debug APKs in project root (keep tracked only if explicitly git-added)
-kanso-launcher-release.apk
-kanso-launcher-debug.apk
-
 # Local config, keystores, and secrets
 local.properties
 keystore.properties
